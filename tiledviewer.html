@@ -356,11 +356,40 @@
                     var context = this;
                     IM.Helpers.XHRGetMultiple([vertexShaderName, fragmentShaderName], function(data) {
                         context._program = new IM.GL.Program(context._gl, data[vertexShaderName], data[fragmentShaderName]);
+                        context._initializeEvents();
                         context._initialized = true;
                         if (callback) {
                             callback();
                         }
                     });
+                },
+                
+                _getPositionFromEvent: function(e) {
+                    var x = e.clientX - e.target.offsetLeft;
+                    var y = e.clientY - e.target.offsetTop;
+                    x /= e.target.offsetWidth;
+                    y /= e.target.offsetHeight; 
+                    return [x, y];
+                },
+                
+                _initializeEvents: function() {
+                
+                    this._currentScale = 1.0;
+                    this._animator.set('Scale', this._currentScale);
+                
+                    var context = this;
+                    this._canvas.addEventListener('wheel', function(e) {
+                        var scale = context._animator.get('Scale');
+                        var factor = (e.wheelDelta > 0) ? 2.0 : 0.5;
+                        context._animator.start('Scale', scale * factor, 500);
+                        
+                        var pt = context._getPositionFromEvent(e);
+                        context._animator.set('ScaleCenterX', pt[0]);
+                        context._animator.set('ScaleCenterY', pt[1]);
+                        
+                        context._invalidate();
+                    });
+                
                 },
                 
                 setImage: function(url, callback) {
@@ -388,6 +417,7 @@
                     this._tiles = [];
                     var buffer = [];
                     var tileSize = 1024;
+                    this._geometryBounds = {x0: 0, y0:0, x1: im.width / tileSize, y1: im.height / tileSize };
                     var roundPot = function(x) { return Math.pow(2.0, Math.ceil(Math.log(x) / Math.log(2.0))); }
                     for (var y = 0; y < im.height; y += tileSize) {
                         var height = Math.min(tileSize, im.height - y);
@@ -472,19 +502,35 @@
                             context._renderPending = false;
                             if (!finished) {
                                 context._invalidate();
+                            } else {
+                                console.log('done rendering');
                             }
                         });
                     }
                 },
                 
+                _updateMatrix: function() {
+                    var scale = this._animator.get('Scale');
+                    var deltaScale = scale / this._currentScale;
+                    this._currentScale = scale;
+                    
+                    var scaleCenterMatrix = IM.Mat3.makeTranslation(
+                        this._animator.get('ScaleCenterX'),
+                        this._animator.get('ScaleCenterY'));
+                        
+                    var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
+                        
+                    var deltaScaleMatrix = IM.Mat3.makeScale(deltaScale, deltaScale);
+                    this._matrix = IM.Mat3.multiply(this._matrix, scaleCenterMatrix, deltaScaleMatrix, scaleCenterInvMatrix);
+                },
+                
                 _render: function() {
-                    console.log('render');
                     var gl = this._gl;
                     gl.clearColor(0.15, 0.15, 0.15, 1.0);
                     gl.clear(gl.COLOR_BUFFER_BIT);
                     if (this._initialized) {
                     
-                        this._matrix = IM.Mat3.makeRotation(0.0);
+                        this._updateMatrix();
                         var matrix = IM.Mat3.multiply(this._aspectMatrix, this._matrix);
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1i('Texture', 0);
@@ -509,7 +555,7 @@
                 var domContainer = document.getElementById('container');
                 var viewer = new IM.Viewer(domContainer);
                 viewer.initialize(function() {
-                    viewer.setImage('image.png');
+                    viewer.setImage('image.jpg');
                 });
             }
         
