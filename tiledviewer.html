@@ -338,9 +338,16 @@
                 this._gl = this._canvas.getContext('webgl', { antialias: true });
                 this._domContainer.appendChild(this._canvas);
                 this._animator = new IM.Animator();
-                this._aspectMatrix = IM.Mat3.makeIdentity();
+                this._baseMatrix = IM.Mat3.makeIdentity();
                 this._matrix = IM.Mat3.makeIdentity();
                 this._resize();
+                
+                var gl = this._gl;
+                gl.enable(this._gl.BLEND);
+                gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+                gl.disable(this._gl.DEPTH_TEST);
+                gl.disable(this._gl.CULL_FACE);
+                gl.clearColor(0.1, 0.1, 0.1, 1);
                 
                 var context = this;
                 window.addEventListener('resize', function() { context._resize(); });
@@ -372,6 +379,8 @@
                 
                 _initializeEvents: function() {
                 
+                    this._animator.set('Alpha', 0);
+                
                     this._currentScale = 1.0;
                     this._animator.set('Scale', this._currentScale);
                     
@@ -395,7 +404,28 @@
                         
                         context._invalidate();
                     });
-                
+                    
+                    this._canvas.addEventListener('mousedown', function(e) {
+                        context._dragStart = [e.clientX, e.clientY];
+                        context._dragStartPos = [
+                            context._animator.get('PosX'),
+                            context._animator.get('PosY')];
+                    });
+                    
+                    window.addEventListener('mouseup', function(e) {
+                        context._dragStart = undefined;
+                    });
+                    
+                    window.addEventListener('mousemove', function(e) {
+                        if (context._dragStart) {
+                            var pt = [e.clientX, e.clientY];
+                            var dx = pt[0] - context._dragStart[0];
+                            var dy = pt[1] - context._dragStart[1];
+                            context._animator.set('PosX', context._dragStartPos[0] + dx);
+                            context._animator.set('PosY', context._dragStartPos[1] + dy);
+                            context._invalidate();
+                        }
+                    });
                 },
                 
                 setImage: function(url, callback) {
@@ -463,6 +493,8 @@
                     this._animator.start('PosX', posX, 500);
                     this._animator.start('PosY', posY, 500);
                     
+                    this._animator.start('Alpha', 1, 1700);
+                    
                     this._invalidate();
                 },
                 
@@ -496,12 +528,13 @@
                     this._canvas.width = width;
                     this._canvas.height = height;
                     this._gl.viewport(0, 0, width, height);
+                    this._gl.scissor(0, 0, width, height);
                     
                     var m0 = IM.Mat3.makeScale(1, -1);
                     var m1 = IM.Mat3.makeTranslation(-1, -1);
                     var m2 = IM.Mat3.makeScale(2 / width, 2 / height);
                     
-                    this._aspectMatrix = IM.Mat3.multiply(m0, m1, m2);
+                    this._baseMatrix = IM.Mat3.multiply(m0, m1, m2);
                     
                     this._invalidate();
                 },
@@ -531,6 +564,7 @@
                         this._animator.get('ScaleCenterX'),
                         this._animator.get('ScaleCenterY'));
                         
+                        /*
                     var posX = this._animator.get('PosX');
                     var posY = this._animator.get('PosY');
                     var deltaPosX = posX - this._currentPosX;
@@ -539,21 +573,27 @@
                     this._currentPosY = posY;
                     
                     var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
+                    */
                         
                     var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
                         
                     var deltaScaleMatrix = IM.Mat3.makeScale(deltaScale, deltaScale);
-                    this._matrix = IM.Mat3.multiply(this._matrix, scaleCenterInvMatrix, deltaPosMatrix, deltaScaleMatrix, scaleCenterMatrix);
+                    this._matrix = IM.Mat3.multiply(this._matrix, scaleCenterInvMatrix, deltaScaleMatrix, scaleCenterMatrix);
                 },
                 
                 _render: function() {
                     var gl = this._gl;
-                    gl.clearColor(0.15, 0.15, 0.15, 1.0);
                     gl.clear(gl.COLOR_BUFFER_BIT);
                     if (this._initialized) {
                     
+                        var posX = this._animator.get('PosX');
+                        var posY = this._animator.get('PosY');
+                        var posMatrix = IM.Mat3.makeTranslation(posX, posY);
+                    
+                        this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
+                    
                         this._updateMatrix();
-                        var matrix = IM.Mat3.multiply(this._aspectMatrix, this._matrix);
+                        var matrix = IM.Mat3.multiply(this._baseMatrix, posMatrix, this._matrix);
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1i('Texture', 0);
                         gl.activeTexture(gl.TEXTURE0);
@@ -577,7 +617,7 @@
                 var domContainer = document.getElementById('container');
                 var viewer = new IM.Viewer(domContainer);
                 viewer.initialize(function() {
-                    viewer.setImage('image.png');
+                    viewer.setImage('image.jpg');
                 });
             }
         
