@@ -398,7 +398,6 @@
                         context._animator.start('Scale', scale * factor, 500);
                         
                         var pt = context._getPositionFromEvent(e);
-                        console.log(pt);
                         context._animator.set('ScaleCenterX', pt[0]);
                         context._animator.set('ScaleCenterY', pt[1]);
                         
@@ -488,10 +487,6 @@
                     var sy = this._domContainer.offsetHeight / im.height;
                     var s = Math.min(sx, sy);
                     this._animator.start('Scale', s, 500);
-                    var posX = (this._domContainer.offsetWidth - im.width * s) * 0.5;
-                    var posY = (this._domContainer.offsetHeight - im.height * s) * 0.5;
-                    this._animator.start('PosX', posX, 500);
-                    this._animator.start('PosY', posY, 500);
                     
                     this._animator.start('Alpha', 1, 1700);
                     
@@ -555,16 +550,23 @@
                     }
                 },
                 
-                _updateMatrix: function() {
+                _getDeltaMatrix: function(deltaScale, scaleCenterX, scaleCenterY, deltaPosX, deltaPosY) {
+                                
+                    var position = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
+                    var scale = IM.Mat3.makeScale(deltaScale, deltaScale);
+                    var scaleCenter = IM.Mat3.makeTranslation(scaleCenterX, scaleCenterY);
+                    var scaleCenterInv = IM.Mat3.invert(scaleCenter);
+                    return IM.Mat3.multiply(position, scaleCenter, scale, scaleCenterInv);
+                },
+                
+                _getCurrentDeltaMatrix: function() {
+                    
+                    // Scale
                     var scale = this._animator.get('Scale');
                     var deltaScale = scale / this._currentScale;
                     this._currentScale = scale;
                     
-                    var scaleCenterMatrix = IM.Mat3.makeTranslation(
-                        this._animator.get('ScaleCenterX'),
-                        this._animator.get('ScaleCenterY'));
-                        
-                        /*
+                    // Position
                     var posX = this._animator.get('PosX');
                     var posY = this._animator.get('PosY');
                     var deltaPosX = posX - this._currentPosX;
@@ -572,30 +574,26 @@
                     this._currentPosX = posX;
                     this._currentPosY = posY;
                     
-                    var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
-                    */
-                        
-                    var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
-                        
-                    var deltaScaleMatrix = IM.Mat3.makeScale(deltaScale, deltaScale);
-                    this._matrix = IM.Mat3.multiply(this._matrix, scaleCenterInvMatrix, deltaScaleMatrix, scaleCenterMatrix);
+                    var scaleCenterX = this._animator.get('ScaleCenterX');
+                    var scaleCenterY = this._animator.get('ScaleCenterY');
+                                        
+                    return this._getDeltaMatrix(deltaScale, scaleCenterX, scaleCenterY, deltaPosX, deltaPosY);
                 },
+                
                 
                 _render: function() {
                     var gl = this._gl;
                     gl.clear(gl.COLOR_BUFFER_BIT);
                     if (this._initialized) {
-                    
-                        var posX = this._animator.get('PosX');
-                        var posY = this._animator.get('PosY');
-                        var posMatrix = IM.Mat3.makeTranslation(posX, posY);
-                    
-                        this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
-                    
-                        this._updateMatrix();
-                        var matrix = IM.Mat3.multiply(this._baseMatrix, posMatrix, this._matrix);
+                        
+                        var deltaMatrix = this._getCurrentDeltaMatrix();
+                        this._matrix = IM.Mat3.multiply(deltaMatrix, this._matrix);
+                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._matrix);
+                        
                         this._program.setUniformMatrix3fv('Matrix', matrix);
+                        this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
                         this._program.setUniform1i('Texture', 0);
+                        
                         gl.activeTexture(gl.TEXTURE0);
                         
                         for (var i = 0; i < this._tiles.length; i++) {
@@ -617,7 +615,7 @@
                 var domContainer = document.getElementById('container');
                 var viewer = new IM.Viewer(domContainer);
                 viewer.initialize(function() {
-                    viewer.setImage('image.jpg');
+                    viewer.setImage('image.png');
                 });
             }
         
