@@ -583,7 +583,21 @@
                 },
                 
                 zoom: function(scale, animDuration) {
+                    this._updateMatrices();
                     this._resetMatrices();
+                    
+                    var matrix = IM.Mat3.multiply(this._posMatrix, this._scaleMatrix, this._rotationMatrix);
+                    var matrixInv = IM.Mat3.invert(matrix);
+                
+                    var pt0 = IM.Mat3.transformPoint(matrixInv, 0, 0);
+                    var pt1 = IM.Mat3.transformPoint(matrixInv, this._canvas.width, this._canvas.height);
+                    
+                    var cx = pt0[0] + (pt1[0] - pt0[0]) * 0.5;
+                    var cy = pt0[1] + (pt1[1] - pt0[1]) * 0.5;
+                    
+                    this._animator.set('ScaleCenterX', cx);
+                    this._animator.set('ScaleCenterY', cy);
+                    
                     this._animator.start('Scale', scale, animDuration);
                     this._invalidate();
                 },
@@ -826,14 +840,14 @@
                 var domContainer = document.getElementById('container');
                 _viewer = new IM.Viewer(domContainer);
                 _viewer.initialize(function() {
-                    _viewer.setImage('image.png', function() {
+                    _viewer.setImage('image.jpg', function() {
                         console.log('ready');
                     });
                 });
             }
             function zoomToFit() { _viewer.zoomToFit(450); }
             function rotate() { _viewer.rotate(); }
-            function zoom100() { _viewer.zoom(1.0, 450); }
+            function zoom100() { _viewer.zoom(1.0, 650); }
         
         </script>
     </head>
