@@ -382,10 +382,11 @@
                 this._resize();
                 
                 var gl = this._gl;
-                gl.enable(this._gl.BLEND);
+                gl.enable(gl.BLEND);
                 gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
-                gl.disable(this._gl.DEPTH_TEST);
-                gl.disable(this._gl.CULL_FACE);
+                gl.disable(gl.DEPTH_TEST);
+                gl.disable(gl.STENCIL_TEST);
+                gl.disable(gl.CULL_FACE);
                 gl.clearColor(0.1, 0.1, 0.1, 1);
                 
                 var context = this;
@@ -578,6 +579,12 @@
                     this._animator.start('PosX', x0, animDuration);
                     this._animator.start('PosY', y0, animDuration);
                     
+                    this._invalidate();
+                },
+                
+                zoom: function(scale, animDuration) {
+                    this._resetMatrices();
+                    this._animator.start('Scale', scale, animDuration);
                     this._invalidate();
                 },
                 
@@ -815,19 +822,18 @@
             // For testing purposes
             //
             var _viewer;
-            function init() {          
+            function init() {
                 var domContainer = document.getElementById('container');
                 _viewer = new IM.Viewer(domContainer);
                 _viewer.initialize(function() {
-                    _viewer.setImage('image.png');
+                    _viewer.setImage('image.png', function() {
+                        console.log('ready');
+                    });
                 });
             }
-            function zoomToFit() {
-                _viewer.zoomToFit(450);
-            }
-            function rotate() {
-                _viewer.rotate();
-            }
+            function zoomToFit() { _viewer.zoomToFit(450); }
+            function rotate() { _viewer.rotate(); }
+            function zoom100() { _viewer.zoom(1.0, 450); }
         
         </script>
     </head>
@@ -837,6 +843,7 @@
         <div style='margin: 16px;'>
             <button onclick='zoomToFit()'>Zoom to fit</button>
             <button onclick='rotate()'>Rotate</button>
+            <button onclick='zoom100()'>Zoom 100%</button>
         </div>
     </body>
 
