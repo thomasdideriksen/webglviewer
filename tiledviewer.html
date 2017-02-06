@@ -398,6 +398,7 @@
                 
                 _initializeEvents: function() {
                 
+                    // Reset animation values + state
                     this._animator.set('Alpha', 0);
                 
                     this._currentScale = 1.0;
@@ -409,8 +410,16 @@
                     this._currentPosY = 0.0;
                     this._animator.set('PosY', this._currentPosY);
                     
-                
                     var context = this;
+                    
+                    // Mouse event helper function
+                    var terminateMouseEvent = function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                    
+                    // Handle mouse wheel events
                     this._canvas.addEventListener('wheel', function(e) {
                         var scale = context._animator.get('Scale');
                         var factor = (e.wheelDelta > 0) ? 2.0 : 0.5;
@@ -428,14 +437,10 @@
                         context._animator.set('ScaleCenterY', ptImage[1]);
                         
                         context._invalidate();
+                        return terminateMouseEvent(e);
                     });
                     
-                    var terminateMouseEvent = function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return false;
-                    }
-                    
+                    // Handle mouse down
                     this._canvas.addEventListener('mousedown', function(e) {
                         context._dragStart = [e.clientX, e.clientY];
                         context._dragStartPos = [
@@ -444,11 +449,13 @@
                         return terminateMouseEvent(e);
                     });
                     
+                    // Handle mouse up
                     window.addEventListener('mouseup', function(e) {
                         context._dragStart = undefined;
                         return terminateMouseEvent(e);
                     });
                     
+                    // Handle mouse move
                     window.addEventListener('mousemove', function(e) {
                         if (context._dragStart) {
                             var pt = [e.clientX, e.clientY];
