@@ -430,15 +430,23 @@
                         context._invalidate();
                     });
                     
+                    var terminateMouseEvent = function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                    
                     this._canvas.addEventListener('mousedown', function(e) {
                         context._dragStart = [e.clientX, e.clientY];
                         context._dragStartPos = [
                             context._animator.get('PosX'),
                             context._animator.get('PosY')];
+                        return terminateMouseEvent(e);
                     });
                     
                     window.addEventListener('mouseup', function(e) {
                         context._dragStart = undefined;
+                        return terminateMouseEvent(e);
                     });
                     
                     window.addEventListener('mousemove', function(e) {
@@ -449,6 +457,7 @@
                             context._animator.set('PosX', context._dragStartPos[0] + dx);
                             context._animator.set('PosY', context._dragStartPos[1] + dy);
                             context._invalidate();
+                            return terminateMouseEvent(e);
                         }
                     });
                 },
