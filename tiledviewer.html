@@ -18,6 +18,7 @@
                 margin: 0px;
                 padding: 0px;
                 display: flex;
+                flex-flow: column nowrap;
                 background: #202020;
                 justify-content: center;
                 align-items: center;
@@ -71,7 +72,7 @@
                     }
                     return true;
                 },
-                
+                                
                 get: function(name) {
                     var animation = this._animations[name];
                     if (!animation) {
@@ -143,6 +144,15 @@
                 return res;
             }
             
+            IM.Mat3.transformPoint = function(m, x, y) {
+                var res = new Float32Array(2);
+                
+                res[0] = m[0] * x + m[3] * y + m[6];
+                res[1] = m[1] * x + m[4] * y + m[7];
+                
+                return res;
+            }
+            
             IM.Mat3.multiply = function() {
                 switch (arguments.length) {
                     case 0: return null;
@@ -209,6 +219,14 @@
                 res[8] = s * (a[0] * a[4] - a[3] * a[1]);
                 
                 return res;
+            }
+            
+            IM.Mat3.toString = function(m) {
+                var str = '';
+                str += '[' + m[0] + ', ' + m[3] + ', ' + m[6] + ']\n';
+                str += '[' + m[1] + ', ' + m[4] + ', ' + m[7] + ']\n';
+                str += '[' + m[2] + ', ' + m[5] + ', ' + m[8] + ']\n';
+                return str
             }
             
             //
@@ -339,7 +357,8 @@
                 this._domContainer.appendChild(this._canvas);
                 this._animator = new IM.Animator();
                 this._baseMatrix = IM.Mat3.makeIdentity();
-                this._matrix = IM.Mat3.makeIdentity();
+                this._scaleMatrix = IM.Mat3.makeIdentity();
+                this._posMatrix = IM.Mat3.makeIdentity();
                 this._resize();
                 
                 var gl = this._gl;
@@ -397,9 +416,16 @@
                         var factor = (e.wheelDelta > 0) ? 2.0 : 0.5;
                         context._animator.start('Scale', scale * factor, 500);
                         
-                        var pt = context._getPositionFromEvent(e);
-                        context._animator.set('ScaleCenterX', pt[0]);
-                        context._animator.set('ScaleCenterY', pt[1]);
+                        var ptScreen = context._getPositionFromEvent(e);
+                        
+                        context._updateMatrices();
+                        var matrix = IM.Mat3.multiply(context._posMatrix, context._scaleMatrix);
+                        var matrixInv = IM.Mat3.invert(matrix);
+                    
+                        var ptImage = IM.Mat3.transformPoint(matrixInv, ptScreen[0], ptScreen[1]);
+                        
+                        context._animator.set('ScaleCenterX', ptImage[0]);
+                        context._animator.set('ScaleCenterY', ptImage[1]);
                         
                         context._invalidate();
                     });
@@ -449,21 +475,29 @@
                 },
                 
                 _setImage: function(im) {
+                    
+                    // Create tiles and geometry
+                    this._imageSize = [im.width, im.height];
                     this._tiles = [];
                     var buffer = [];
                     var tileSize = 1024;
                     var roundPot = function(x) { return Math.pow(2.0, Math.ceil(Math.log(x) / Math.log(2.0))); }
                     for (var y = 0; y < im.height; y += tileSize) {
+                    
                         var height = Math.min(tileSize, im.height - y);
                         var heightPot = roundPot(height);
+                    
                         for (var x = 0; x < im.width; x += tileSize) {
+                        
                             var width = Math.min(tileSize, im.width - x);
                             var widthPot = roundPot(width);
                             
+                            // Create tile texture
                             var tileIm = this._cropImage(im, x, y, widthPot, heightPot);
                             var tileTex = this._createTexture(tileIm);
                             this._tiles.push(tileTex);
                             
+                            // Create geometry quad
                             var quad = this._createQuad(x, y, width, height, width / widthPot, height / heightPot);
                             Array.prototype.push.apply(buffer, quad);
                         }
@@ -482,13 +516,27 @@
                     gl.enableVertexAttribArray(bufferLocation);
                     gl.vertexAttribPointer(bufferLocation, 4, gl.FLOAT, false, 0, 0);
                     
+                    // Zoom to fit and fade in
+                    this.zoomToFit();
+                    this._animator.start('Alpha', 1, 800);
+                    this._invalidate();
+                },
+                
+                zoomToFit: function(animDuration) {
+
+                    this._resetMatrices();
+
                     // Zoom to fit
-                    var sx = this._domContainer.offsetWidth / im.width;
-                    var sy = this._domContainer.offsetHeight / im.height;
+                    var sx = this._domContainer.offsetWidth / this._imageSize[0];
+                    var sy = this._domContainer.offsetHeight / this._imageSize[1];
                     var s = Math.min(sx, sy);
-                    this._animator.start('Scale', s, 500);
+                    this._animator.start('Scale', s, animDuration);
                     
-                    this._animator.start('Alpha', 1, 1700);
+                    // Center
+                    var x0 = (this._domContainer.offsetWidth - this._imageSize[0] * s) * 0.5;
+                    var y0 = (this._domContainer.offsetHeight - this._imageSize[1] * s) * 0.5;
+                    this._animator.start('PosX', x0, animDuration);
+                    this._animator.start('PosY', y0, animDuration);
                     
                     this._invalidate();
                 },
@@ -525,10 +573,10 @@
                     this._gl.viewport(0, 0, width, height);
                     this._gl.scissor(0, 0, width, height);
                     
+                    // Create 'base matrix' (including aspect-ratio, topleft-origin, pixel-scale)
                     var m0 = IM.Mat3.makeScale(1, -1);
                     var m1 = IM.Mat3.makeTranslation(-1, -1);
                     var m2 = IM.Mat3.makeScale(2 / width, 2 / height);
-                    
                     this._baseMatrix = IM.Mat3.multiply(m0, m1, m2);
                     
                     this._invalidate();
@@ -543,52 +591,78 @@
                             context._renderPending = false;
                             if (!finished) {
                                 context._invalidate();
-                            } else {
-                                console.log('done rendering');
                             }
                         });
                     }
                 },
                 
-                _getDeltaMatrix: function(deltaScale, scaleCenterX, scaleCenterY, deltaPosX, deltaPosY) {
-                                
-                    var position = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
-                    var scale = IM.Mat3.makeScale(deltaScale, deltaScale);
-                    var scaleCenter = IM.Mat3.makeTranslation(scaleCenterX, scaleCenterY);
-                    var scaleCenterInv = IM.Mat3.invert(scaleCenter);
-                    return IM.Mat3.multiply(position, scaleCenter, scale, scaleCenterInv);
+                _resetMatrices: function() {
+                
+                    // Make sure the matrices are up-to-date
+                    this._updateMatrices();
+                    
+                    // Compute combined transformation matrix
+                    var matrix = IM.Mat3.multiply(this._posMatrix, this._scaleMatrix);
+                    
+                    // Find transformed image coordinates (aka. the current position of the image)
+                    var tl = IM.Mat3.transformPoint(matrix, 0, 0);
+                    var br = IM.Mat3.transformPoint(matrix, this._imageSize[0], this._imageSize[1]);
+                    
+                    // Update position matrix
+                    this._currentPosX = tl[0];
+                    this._currentPosY = tl[1];
+                    this._animator.set('PosX',  this._currentPosX);
+                    this._animator.set('PosY',  this._currentPosY);
+                    this._posMatrix = IM.Mat3.makeTranslation(this._currentPosX, this._currentPosY);
+                    
+                    // Update scale matrix
+                    var scale = (br[0] - tl[0]) / this._imageSize[0];
+                    this._currentScale = scale;
+                    this._animator.set('Scale', this._currentScale);
+                    this._scaleMatrix = IM.Mat3.makeScale(this._currentScale, this._currentScale);
+                    
+                    // Reset scale center
+                    this._animator.set('ScaleCenterX', 0);
+                    this._animator.set('ScaleCenterY', 0);
                 },
                 
-                _getCurrentDeltaMatrix: function() {
-                    
-                    // Scale
+                _updateMatrices: function() {
+                
+                    // Create scale delta-matrix
                     var scale = this._animator.get('Scale');
                     var deltaScale = scale / this._currentScale;
                     this._currentScale = scale;
+                    var deltaScaleMatrix = IM.Mat3.makeScale(deltaScale, deltaScale);
                     
-                    // Position
+                    // Create scale-center matrices
+                    var scaleCenterX = this._animator.get('ScaleCenterX');
+                    var scaleCenterY = this._animator.get('ScaleCenterY');
+                    var scaleCenterMatrix = IM.Mat3.makeTranslation(scaleCenterX, scaleCenterY);
+                    var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
+                    
+                    // Update scale matrix
+                    this._scaleMatrix = IM.Mat3.multiply(this._scaleMatrix, scaleCenterMatrix, deltaScaleMatrix, scaleCenterInvMatrix);
+                   
+                    // Create position delta-matrix
                     var posX = this._animator.get('PosX');
                     var posY = this._animator.get('PosY');
                     var deltaPosX = posX - this._currentPosX;
                     var deltaPosY = posY - this._currentPosY;
                     this._currentPosX = posX;
                     this._currentPosY = posY;
+                    var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
                     
-                    var scaleCenterX = this._animator.get('ScaleCenterX');
-                    var scaleCenterY = this._animator.get('ScaleCenterY');
-                                        
-                    return this._getDeltaMatrix(deltaScale, scaleCenterX, scaleCenterY, deltaPosX, deltaPosY);
+                    // Update position matrix
+                    this._posMatrix = IM.Mat3.multiply(this._posMatrix, deltaPosMatrix);
                 },
-                
                 
                 _render: function() {
                     var gl = this._gl;
                     gl.clear(gl.COLOR_BUFFER_BIT);
                     if (this._initialized) {
                         
-                        var deltaMatrix = this._getCurrentDeltaMatrix();
-                        this._matrix = IM.Mat3.multiply(deltaMatrix, this._matrix);
-                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._matrix);
+                        this._updateMatrices();
+                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._posMatrix, this._scaleMatrix);
                         
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
@@ -611,12 +685,16 @@
             //
             // For testing purposes
             //
-            function init() {            
+            var _viewer;
+            function init() {          
                 var domContainer = document.getElementById('container');
-                var viewer = new IM.Viewer(domContainer);
-                viewer.initialize(function() {
-                    viewer.setImage('image.png');
+                _viewer = new IM.Viewer(domContainer);
+                _viewer.initialize(function() {
+                    _viewer.setImage('image.png');
                 });
+            }
+            function zoomToFit() {
+                _viewer.zoomToFit(350);
             }
         
         </script>
@@ -624,6 +702,9 @@
     
     <body onload='init()'>
         <div id='container'></div>
+        <div style='margin: 16px;'>
+            <button onclick='zoomToFit()'>Zoom to fit</button>
+        </div>
     </body>
 
 </html>
