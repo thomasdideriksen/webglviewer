@@ -24,8 +24,8 @@
                 align-items: center;
             }
             #container {
-                width: 80%;
-                height: 60%;
+                width: 90%;
+                height: 86%;
                 border: 1px solid white;
                 overflow: hidden;
             }
@@ -72,7 +72,15 @@
                     }
                     return true;
                 },
-                                
+                
+                getDestination: function(name) {
+                    var animation = this._animations[name];
+                    if (!animation) {
+                        return 0;
+                    }
+                    return animation.to;
+                },
+                
                 get: function(name) {
                     var animation = this._animations[name];
                     if (!animation) {
@@ -356,7 +364,7 @@
                 
                 var possibleContextNames = ['webgl', 'experimental-webgl'];
                 for (var i = 0; i < possibleContextNames.length; i++) {
-                    this._gl = this._canvas.getContext(possibleContextNames[i], { antialias: true });
+                    this._gl = this._canvas.getContext(possibleContextNames[i], { antialias: true, alpha: false, depth: false, stencil: false });
                     if (this._gl) {
                         break;
                     }
@@ -370,6 +378,7 @@
                 this._baseMatrix = IM.Mat3.makeIdentity();
                 this._scaleMatrix = IM.Mat3.makeIdentity();
                 this._posMatrix = IM.Mat3.makeIdentity();
+                this._rotationMatrix = IM.Mat3.makeIdentity();
                 this._resize();
                 
                 var gl = this._gl;
@@ -421,6 +430,9 @@
                     this._currentPosY = 0.0;
                     this._animator.set('PosY', this._currentPosY);
                     
+                    this._currentRotation = 0.0;
+                    this._animator.set('Rotation', this._currentRotation);
+                    
                     var context = this;
                     
                     // Mouse event helper function
@@ -434,12 +446,12 @@
                     this._canvas.addEventListener('wheel', function(e) {
                         var scale = context._animator.get('Scale');
                         var factor = (e.deltaY < 0) ? 2.0 : 0.5;
-                        context._animator.start('Scale', scale * factor, 500);
+                        context._animator.start('Scale', scale * factor, 750);
                         
                         var ptScreen = context._getPositionFromEvent(e);
                         
                         context._updateMatrices();
-                        var matrix = IM.Mat3.multiply(context._posMatrix, context._scaleMatrix);
+                        var matrix = IM.Mat3.multiply(context._posMatrix, context._scaleMatrix, context._rotationMatrix);
                         var matrixInv = IM.Mat3.invert(matrix);
                     
                         var ptImage = IM.Mat3.transformPoint(matrixInv, ptScreen[0], ptScreen[1]);
@@ -667,7 +679,7 @@
                     }
                     
                     // Start snap animation
-                    var duration = 450;
+                    var duration = 750;
                     
                     if (newX !== undefined) {
                         this._animator.start('PosX', newX, duration);
@@ -680,13 +692,21 @@
                     }
                 },
                 
+                rotate: function() {
+                    this._animator.set('RotationCenterX', this._imageSize[0] * 0.5);
+                    this._animator.set('RotationCenterY', this._imageSize[1] * 0.5);
+                    var rotation = this._animator.getDestination('Rotation');
+                    this._animator.start('Rotation', rotation - Math.PI * 0.5, 500);
+                    this._invalidate();
+                },
+                
                 _getImageRect: function() {
                 
                     // Make sure the matrices are up-to-date
                     this._updateMatrices();
                     
                     // Compute combined transformation matrix
-                    var matrix = IM.Mat3.multiply(this._posMatrix, this._scaleMatrix);
+                    var matrix = IM.Mat3.multiply(this._posMatrix, this._scaleMatrix, this._rotationMatrix);
                     
                     // Find transformed image coordinates (aka. the current position of the image)
                     var tl = IM.Mat3.transformPoint(matrix, 0, 0);
@@ -716,6 +736,8 @@
                     // Reset scale center
                     this._animator.set('ScaleCenterX', 0);
                     this._animator.set('ScaleCenterY', 0);
+                                        
+                    // TODO: Reset rotation matrix + RotationCenterX/Y
                 },
                 
                 _updateMatrices: function() {
@@ -738,23 +760,38 @@
                     // Create position delta-matrix
                     var posX = this._animator.get('PosX');
                     var posY = this._animator.get('PosY');
-                    var deltaPosX = posX - this._currentPosX;
-                    var deltaPosY = posY - this._currentPosY;
+                    var deltaPosX = Math.round(posX - this._currentPosX); // Note: Round the position-delta to nearest pixel - otherwise we get sampling artifacts during motion-animations
+                    var deltaPosY = Math.round(posY - this._currentPosY);
                     this._currentPosX = posX;
                     this._currentPosY = posY;
                     var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
                     
                     // Update position matrix
                     this._posMatrix = IM.Mat3.multiply(this._posMatrix, deltaPosMatrix);
+                    
+                    // Create rotation delta-matrix
+                    var rotation = this._animator.get('Rotation');
+                    var deltaRotation = rotation - this._currentRotation;
+                    this._currentRotation = rotation;
+                    var deltaRotationMatrix = IM.Mat3.makeRotation(deltaRotation);
+                    
+                    // Create rotation-center matrices
+                    var rotationCenterX = this._animator.get('RotationCenterX');
+                    var rotationCenterY = this._animator.get('RotationCenterY');
+                    var rotationCenterMatrix = IM.Mat3.makeTranslation(rotationCenterX, rotationCenterY);
+                    var rotationCenterInvMatrix = IM.Mat3.invert(rotationCenterMatrix);
+                    
+                    // Update rotation matrix
+                    this._rotationMatrix = IM.Mat3.multiply(this._rotationMatrix, rotationCenterMatrix, deltaRotationMatrix, rotationCenterInvMatrix);
                 },
                 
                 _render: function() {
                     var gl = this._gl;
                     gl.clear(gl.COLOR_BUFFER_BIT);
-                    if (this._initialized) {
+                    if (this._initialized && this._tiles) {
                         
                         this._updateMatrices();
-                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._posMatrix, this._scaleMatrix);
+                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._posMatrix, this._scaleMatrix, this._rotationMatrix);
                         
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
@@ -788,6 +825,9 @@
             function zoomToFit() {
                 _viewer.zoomToFit(450);
             }
+            function rotate() {
+                _viewer.rotate();
+            }
         
         </script>
     </head>
@@ -796,6 +836,7 @@
         <div id='container'></div>
         <div style='margin: 16px;'>
             <button onclick='zoomToFit()'>Zoom to fit</button>
+            <button onclick='rotate()'>Rotate</button>
         </div>
     </body>
 
