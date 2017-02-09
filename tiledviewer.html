@@ -164,7 +164,7 @@
             IM.Mat3.multiply = function() {
                 switch (arguments.length) {
                     case 0: return null;
-                    case 1: return arguments[1];
+                    case 1: return arguments[0];
                     default:
                         var res = IM.Mat3.multiplyTwo(arguments[0], arguments[1]);
                         for (var i = 2; i < arguments.length; i++) {
@@ -721,7 +721,7 @@
                     }
                 },
                 
-                rotate: function() {
+                rotate: function(duration) {
                     this._updateMatrices();
                     
                     this._resetMatrices();
@@ -731,7 +731,7 @@
                     
                     this._intendedRotation -= Math.PI * 0.5;
                     
-                    this._animator.start('Rotation', this._intendedRotation, 500);
+                    this._animator.start('Rotation', this._intendedRotation, duration);
                     this._invalidate();
                 },
                 
@@ -795,6 +795,7 @@
                     
                     // Reset rotation
                     this._currentRotation = rect.rotation;
+                    this._animator.set('Rotation', this._currentRotation);
                     this._rotationMatrix = IM.Mat3.makeRotation(this._currentRotation);
                     
                     // Reset scale center
@@ -892,7 +893,7 @@
                 });
             }
             function zoomToFit() { _viewer.zoomToFit(450); }
-            function rotate() { _viewer.rotate(); }
+            function rotate() { _viewer.rotate(1500); }
             function zoom100() { _viewer.zoom(1.0, 650); }
             function resetMatrices() { _viewer._resetMatrices(); _viewer._invalidate(); }
         
