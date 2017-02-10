@@ -578,20 +578,23 @@
                 zoomToFit: function(animDuration) {
 
                     // Scale
-                    var matrix = this._makeTransformMatrix({ rotation: this._animator.getDestination('Rotation') });
+                    var matrix = this._makeTransformMatrix({
+                        rotation: this._animator.getDestination('Rotation') });
                     var rect = this._getImageRect(matrix);
                     var sx = this._canvas.width / rect.bounds.width;
                     var sy = this._canvas.height / rect.bounds.height;
-                    var newScale = this._currentScale * Math.min(sx, sy);
+                    var newScale = this._animator.get('Scale') * Math.min(sx, sy);
                     this._animator.start('Scale', newScale, animDuration);
 
                     // Position
-                    var matrix = this._makeTransformMatrix({ scale: this._animator.getDestination('Scale'), rotation: this._animator.getDestination('Rotation') });
+                    var matrix = this._makeTransformMatrix({ 
+                        rotation: this._animator.getDestination('Rotation'),
+                        scale: this._animator.getDestination('Scale') });
                     var rect = this._getImageRect(matrix);
                     var x0 = (this._canvas.width - rect.bounds.width) * 0.5;
                     var y0 = (this._canvas.height - rect.bounds.height) * 0.5;
-                    var newPosX = this._currentPosX + (x0 - rect.bounds.x0);
-                    var newPosY = this._currentPosY + (y0 - rect.bounds.y0);
+                    var newPosX = this._animator.get('PosX') + (x0 - rect.bounds.x0);
+                    var newPosY = this._animator.get('PosY') + (y0 - rect.bounds.y0);
                     this._animator.start('PosX', newPosX, animDuration);
                     this._animator.start('PosY', newPosY, animDuration);
                     
@@ -689,8 +692,7 @@
                     var oldY = this._animator.get('PosY');
                     
                     // Variables
-                    var delta = 1;
-                    var newX, newY;
+                    var newX, newY, delta = 1;
                     
                     // Does the image fit within the canvas?
                     var fitX = (rect.bounds.width - delta <= width);
@@ -698,38 +700,23 @@
                     
                     // Handle x axis snapping
                     if (fitX) {
-                        if (rect.bounds.x0 < 0) {
-                            newX = oldX + Math.abs(rect.bounds.x0);
-                        }
-                        else if (rect.bounds.x1 > width) {
-                            newX = oldX - (rect.bounds.x1 - width);
-                        }
+                        if (rect.bounds.x0 < 0)           { newX = oldX + Math.abs(rect.bounds.x0);  }
+                        else if (rect.bounds.x1 > width)  { newX = oldX - (rect.bounds.x1 - width);  }
                     } else {
-                        if (rect.bounds.x1 < width) {
-                            newX = oldX + (width - rect.bounds.x1);
-                        }
-                        else if (rect.bounds.x0 > 0) {
-                            newX = oldX - rect.bounds.x0;
-                        }
+                        if (rect.bounds.x1 < width)       { newX = oldX + (width - rect.bounds.x1);  }
+                        else if (rect.bounds.x0 > 0)      { newX = oldX - rect.bounds.x0;            }
                     }
                     
                     // Handle y axis snapping
                     if (fitY) {
-                        if (rect.bounds.y0 < 0) {
-                            newY = oldY + Math.abs(rect.bounds.y0);
-                        }
-                        else if (rect.bounds.y1 > height) {
-                            newY = oldY - (rect.bounds.y1 - height);
-                        }
+                        if (rect.bounds.y0 < 0)           { newY = oldY + Math.abs(rect.bounds.y0);  }
+                        else if (rect.bounds.y1 > height) { newY = oldY - (rect.bounds.y1 - height); }
                     } else {
-                        if (rect.bounds.y1 < height) {
-                            newY = oldY + (height- rect.bounds.y1);
-                        }
-                        else if (rect.bounds.y0 > 0) {
-                            newY = oldY - rect.bounds.y0;
-                        }
+                        if (rect.bounds.y1 < height)      { newY = oldY + (height- rect.bounds.y1);  }
+                        else if (rect.bounds.y0 > 0)      { newY = oldY - rect.bounds.y0;            }
                     }
-                                        
+                    
+                    // If snapping is needed, do the appropriate animation
                     if (newX !== undefined) {
                         this._animator.start('PosX', newX, duration);
                         this._invalidate();
