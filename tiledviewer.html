@@ -359,6 +359,10 @@
             // Viewer
             //
             IM.Viewer = function(domContainer) {
+            
+                Math.rad2deg = function(rad) { return rad / Math.PI * 180; }
+                Math.deg2rad = function(deg) { return deg / 180 * Math.PI; }
+            
                 this._domContainer = domContainer;
                 this._canvas = document.createElement('canvas');
                 
@@ -723,13 +727,15 @@
                 
                 rotate: function(duration) {
                     this._updateMatrices();
-                    
                     this._resetMatrices();
+                    
+                    var rect = this._getImageRect();
                 
-                    this._animator.set('RotationCenterX', 0);
-                    this._animator.set('RotationCenterY', 0);
+                    this._animator.set('RotationCenterX', this._imageSize[0] * 0.5);
+                    this._animator.set('RotationCenterY', this._imageSize[1] * 0.5);
                     
                     this._intendedRotation -= Math.PI * 0.5;
+                    
                     
                     this._animator.start('Rotation', this._intendedRotation, duration);
                     this._invalidate();
@@ -766,12 +772,11 @@
                     bounds.width = bounds.x1 - bounds.x0;
                     bounds.height = bounds.y1 - bounds.y0;
                     
-                    var rotation = Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
+                    var rotation = Math.PI * 2.0 - Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
                     return {x0: tl[0], y0: tl[1], x1: br[0], y1: br[1], topLeft: tl, width: distance(tl, tr), height: distance(tr, br), rotation: rotation, center: center, bounds: bounds};
                 },
                 
                 _resetMatrices: function() {
-                    console.log('_resetMatrices');
                 
                     // Get image rectangle
                     var rect = this._getImageRect();
@@ -839,8 +844,8 @@
                     var deltaRotationMatrix = IM.Mat3.makeRotation(deltaRotation);
                     
                     // Create rotation-center matrices
-                    var rotationCenterX = this._animator.get('RotationCenterX');
-                    var rotationCenterY = this._animator.get('RotationCenterY');
+                    var rotationCenterX = this._animator.get('RotationCenterX') * this._currentScale;
+                    var rotationCenterY = this._animator.get('RotationCenterY') * this._currentScale;
                     var rotationCenterMatrix = IM.Mat3.makeTranslation(rotationCenterX, rotationCenterY);
                     var rotationCenterInvMatrix = IM.Mat3.invert(rotationCenterMatrix);
                     
