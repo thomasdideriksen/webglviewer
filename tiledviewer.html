@@ -377,15 +377,6 @@
                     throw 'Failed to get WebGL context';
                 }
                 
-                this._domContainer.appendChild(this._canvas);
-                this._animator = new IM.Animator();
-                this._baseMatrix = IM.Mat3.makeIdentity();
-                //this._scaleMatrix = IM.Mat3.makeIdentity();
-                //this._posMatrix = IM.Mat3.makeIdentity();
-                //this._rotationMatrix = IM.Mat3.makeIdentity();
-                this._transformMatrix = IM.Mat3.makeIdentity();
-                this._resize();
-                
                 var gl = this._gl;
                 gl.enable(gl.BLEND);
                 gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
@@ -394,8 +385,15 @@
                 gl.disable(gl.CULL_FACE);
                 gl.clearColor(0.1, 0.1, 0.1, 1);
                 
+                this._domContainer.appendChild(this._canvas);
+                this._animator = new IM.Animator();
+                this._baseMatrix = IM.Mat3.makeIdentity();
+                this._transformMatrix = IM.Mat3.makeIdentity();
+                
                 var context = this;
                 window.addEventListener('resize', function() { context._resize(); });
+                
+                this._resize();
             }
             
             IM.Viewer.prototype = {
@@ -576,35 +574,34 @@
                 
                 zoomToFit: function(animDuration) {
 
-                    // Zoom to fit
-                    var sx = this._canvas.width / this._imageSize[0];
-                    var sy = this._canvas.height / this._imageSize[1];
-                    var s = Math.min(sx, sy);
-                    this._animator.start('Scale', s, animDuration);
-                    
-                    var matrix = this._makeTransformMatrix({scale: s});
-                    var tl = IM.Mat3.transformPoint(matrix, 0, 0);
-                    console.log(tl);
-                    
-                    // Center
-                    //var x0 = (this._canvas.width - this._imageSize[0] * s) * 0.5;
-                    //var y0 = (this._canvas.height - this._imageSize[1] * s) * 0.5;
-                    //this._animator.start('PosX', x0 - tl[0], animDuration);
-                    //this._animator.start('PosY', y0 - tl[1], animDuration);
+                    // Scale
+                    var matrix = this._makeTransformMatrix({ rotation: this._animator.getDestination('Rotation') });
+                    var rect = this._getImageRect(matrix);
+                    var sx = this._canvas.width / rect.bounds.width;
+                    var sy = this._canvas.height / rect.bounds.height;
+                    var newScale = this._currentScale * Math.min(sx, sy);
+                    this._animator.start('Scale', newScale, animDuration);
+
+                    // Position
+                    var matrix = this._makeTransformMatrix({ scale: this._animator.getDestination('Scale'), rotation: this._animator.getDestination('Rotation') });
+                    var rect = this._getImageRect(matrix);
+                    var x0 = (this._canvas.width - rect.bounds.width) * 0.5;
+                    var y0 = (this._canvas.height - rect.bounds.height) * 0.5;
+                    var newPosX = this._currentPosX + (x0 - rect.bounds.x0);
+                    var newPosY = this._currentPosY + (y0 - rect.bounds.y0);
+                    this._animator.start('PosX', newPosX, animDuration);
+                    this._animator.start('PosY', newPosY, animDuration);
                     
                     this._invalidate();
                 },
                 
                 zoom: function(scale, animDuration) {
-                    this._updateMatrices();
                     
-                    var matrix = this._getTransformMatrix();
+                    var matrix = this._makeTransformMatrix({ rotation: this._animator.getDestination('Rotation') });
                     var matrixInv = IM.Mat3.invert(matrix);
                 
                     var pt0 = IM.Mat3.transformPoint(matrixInv, 0, 0);
                     var pt1 = IM.Mat3.transformPoint(matrixInv, this._canvas.width, this._canvas.height);
-                    
-                    this._resetMatrices();
                     
                     var cx = pt0[0] + (pt1[0] - pt0[0]) * 0.5;
                     var cy = pt0[1] + (pt1[1] - pt0[1]) * 0.5;
@@ -671,10 +668,14 @@
                     }
                 },
                 
+                
+                
                 _snapBack: function() {
                 
-                    // Get image rectangle
-                    var rect = this._getImageRect();
+                    var matrix = this._makeTransformMatrix({ 
+                        scale: this._animator.getDestination('Scale'), 
+                        rotation: this._animator.getDestination('Rotation')});
+                    var rect = this._getImageRect(matrix);
                     
                     // Get canvas dimension
                     var width = this._canvas.width;
@@ -727,28 +728,17 @@
                 },
                 
                 rotate: function(duration) {
-                    this._updateMatrices();
-                    this._resetMatrices();
                     
-                    var rect = this._getImageRect();
-                
                     this._animator.set('RotationCenterX', this._imageSize[0] * 0.5);
                     this._animator.set('RotationCenterY', this._imageSize[1] * 0.5);
                     
                     this._intendedRotation -= Math.PI * 0.5;
                     
-                    
                     this._animator.start('Rotation', this._intendedRotation, duration);
                     this._invalidate();
                 },
                 
-                _getImageRect: function() {
-                
-                    // Make sure the matrices are up-to-date
-                    this._updateMatrices();
-                    
-                    // Compute combined transformation matrix
-                    var matrix = this._getTransformMatrix();
+                _getImageRect: function(matrix) {
                     
                     // Find transformed image coordinates (aka. the current position of the image)
                     var tl = IM.Mat3.transformPoint(matrix, 0, 0);
@@ -774,7 +764,16 @@
                     bounds.height = bounds.y1 - bounds.y0;
                     
                     var rotation = Math.PI * 2.0 - Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
-                    return {x0: tl[0], y0: tl[1], x1: br[0], y1: br[1], topLeft: tl, width: distance(tl, tr), height: distance(tr, br), rotation: rotation, center: center, bounds: bounds};
+                    return {
+                        topLeft: tl, 
+                        topRight: tr,
+                        bottomLeft: bl,
+                        bottomRight: br,
+                        width: distance(tl, tr), 
+                        height: distance(tr, br), 
+                        rotation: rotation, 
+                        center: center, 
+                        bounds: bounds};
                 },
                 
                 _makeTransformMatrix: function(args) {
@@ -806,8 +805,8 @@
                     var deltaRotationMatrix = IM.Mat3.makeRotation(deltaRotation);
                     
                     // Create rotation-center matrices
-                    var rotationCenterX = this._animator.get('RotationCenterX') * this._currentScale;
-                    var rotationCenterY = this._animator.get('RotationCenterY') * this._currentScale;
+                    var rotationCenterX = this._animator.get('RotationCenterX');
+                    var rotationCenterY = this._animator.get('RotationCenterY');
                     var rotationCenterMatrix = IM.Mat3.makeTranslation(rotationCenterX, rotationCenterY);
                     var rotationCenterInvMatrix = IM.Mat3.invert(rotationCenterMatrix);
                     
@@ -819,6 +818,7 @@
                         this._currentRotation = rotation;
                     }
                     
+                    // Compute and return transformatin matrix
                     return IM.Mat3.multiply(
                         deltaPosMatrix,
                         this._transformMatrix,
