@@ -534,18 +534,6 @@
                     });
                 },
                 
-                setImage: function(url, callback) {
-                    var im = new Image();
-                    var context = this;
-                    im.onload = function() {
-                        context._setImage(im);
-                        if (callback) {
-                            callback();
-                        }
-                    };
-                    im.src = url;
-                },
-                
                 _createQuad: function(x, y, w, h, texW, texH) {
                     return [x,     y,     0,    0,     // 0-2
                             x,     y + h, 0,    texH,  // |/
@@ -555,7 +543,19 @@
                             x + w, y,     texW, 0];    // 0-1
                 },
                 
-                _setImage: function(im) {
+                setImageByUrl: function(url, callback) {
+                    var im = new Image();
+                    var context = this;
+                    im.onload = function() {
+                        context.setImage(im);
+                        if (callback) {
+                            callback();
+                        }
+                    };
+                    im.src = url;
+                },
+                
+                setImage: function(im) {
                     
                     // Create tiles and geometry
                     this._imageSize = [im.width, im.height];
@@ -906,7 +906,7 @@
                 };
             
                 _viewer = new IM.Viewer(viewerConfig, function() {
-                    _viewer.setImage('image.jpg', function() {
+                    _viewer.setImageByUrl('image.jpg', function() {
                         console.log('ready');
                     });
                 });
