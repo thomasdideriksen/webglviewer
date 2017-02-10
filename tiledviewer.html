@@ -380,9 +380,10 @@
                 this._domContainer.appendChild(this._canvas);
                 this._animator = new IM.Animator();
                 this._baseMatrix = IM.Mat3.makeIdentity();
-                this._scaleMatrix = IM.Mat3.makeIdentity();
-                this._posMatrix = IM.Mat3.makeIdentity();
-                this._rotationMatrix = IM.Mat3.makeIdentity();
+                //this._scaleMatrix = IM.Mat3.makeIdentity();
+                //this._posMatrix = IM.Mat3.makeIdentity();
+                //this._rotationMatrix = IM.Mat3.makeIdentity();
+                this._transformMatrix = IM.Mat3.makeIdentity();
                 this._resize();
                 
                 var gl = this._gl;
@@ -462,8 +463,7 @@
                         
                         var ptScreen = context._getPositionFromEvent(e);
                         
-                        context._updateMatrices();
-                        var matrix = context._getTransformMatrix();
+                        var matrix = context._makeTransformMatrix();
                         var matrixInv = IM.Mat3.invert(matrix);
                     
                         var ptImage = IM.Mat3.transformPoint(matrixInv, ptScreen[0], ptScreen[1]);
@@ -487,7 +487,7 @@
                     // Handle mouse up
                     window.addEventListener('mouseup', function(e) {
                         context._dragStart = undefined;
-                        context._snapBack();
+                        //context._snapBack();
                         return terminateMouseEvent(e);
                     });
                     
@@ -576,19 +576,21 @@
                 
                 zoomToFit: function(animDuration) {
 
-                    this._resetMatrices();
-
                     // Zoom to fit
                     var sx = this._canvas.width / this._imageSize[0];
                     var sy = this._canvas.height / this._imageSize[1];
                     var s = Math.min(sx, sy);
                     this._animator.start('Scale', s, animDuration);
                     
+                    var matrix = this._makeTransformMatrix({scale: s});
+                    var tl = IM.Mat3.transformPoint(matrix, 0, 0);
+                    console.log(tl);
+                    
                     // Center
-                    var x0 = (this._canvas.width - this._imageSize[0] * s) * 0.5;
-                    var y0 = (this._canvas.height - this._imageSize[1] * s) * 0.5;
-                    this._animator.start('PosX', x0, animDuration);
-                    this._animator.start('PosY', y0, animDuration);
+                    //var x0 = (this._canvas.width - this._imageSize[0] * s) * 0.5;
+                    //var y0 = (this._canvas.height - this._imageSize[1] * s) * 0.5;
+                    //this._animator.start('PosX', x0 - tl[0], animDuration);
+                    //this._animator.start('PosY', y0 - tl[1], animDuration);
                     
                     this._invalidate();
                 },
@@ -672,7 +674,6 @@
                 _snapBack: function() {
                 
                     // Get image rectangle
-                    this._resetMatrices();
                     var rect = this._getImageRect();
                     
                     // Get canvas dimension
@@ -776,44 +777,17 @@
                     return {x0: tl[0], y0: tl[1], x1: br[0], y1: br[1], topLeft: tl, width: distance(tl, tr), height: distance(tr, br), rotation: rotation, center: center, bounds: bounds};
                 },
                 
-                _resetMatrices: function() {
-                
-                    // Get image rectangle
-                    var rect = this._getImageRect();
+                _makeTransformMatrix: function(args) {
+
+                    // Get target values
+                    var scale = args && args.scale ? args.scale : this._animator.get('Scale');
+                    var posX = args && args.posX ? args.posX : this._animator.get('PosX');
+                    var posY = args && args.posY ? args.posY : this._animator.get('PosY');
+                    var rotation = args && args.rotation ? args.rotation : this._animator.get('Rotation');
+                    var updateState = args && args.updateState ? args.updateState : false;
                     
-                    // Update position matrix
-                    this._currentPosX = rect.topLeft[0]
-                    this._currentPosY = rect.topLeft[1]
-                    this._animator.set('PosX',  this._currentPosX);
-                    this._animator.set('PosY',  this._currentPosY);
-                    this._posMatrix = IM.Mat3.makeTranslation(this._currentPosX, this._currentPosY);
-                    
-                    // Update scale matrix
-                    var scale = Math.max(rect.width, rect.height) / Math.max(this._imageSize[0], this._imageSize[1]);
-                    this._currentScale = scale;
-                    this._animator.set('Scale', this._currentScale);
-                    this._scaleMatrix = IM.Mat3.makeScale(this._currentScale, this._currentScale);
-                    
-                    // Reset scale center
-                    this._animator.set('ScaleCenterX', 0);
-                    this._animator.set('ScaleCenterY', 0);
-                    
-                    // Reset rotation
-                    this._currentRotation = rect.rotation;
-                    this._animator.set('Rotation', this._currentRotation);
-                    this._rotationMatrix = IM.Mat3.makeRotation(this._currentRotation);
-                    
-                    // Reset scale center
-                    this._animator.set('RotationCenterX', 0);
-                    this._animator.set('RotationCenterY', 0);
-                },
-                
-                _updateMatrices: function() {
-                
                     // Create scale delta-matrix
-                    var scale = this._animator.get('Scale');
                     var deltaScale = scale / this._currentScale;
-                    this._currentScale = scale;
                     var deltaScaleMatrix = IM.Mat3.makeScale(deltaScale, deltaScale);
                     
                     // Create scale-center matrices
@@ -822,25 +796,13 @@
                     var scaleCenterMatrix = IM.Mat3.makeTranslation(scaleCenterX, scaleCenterY);
                     var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
                     
-                    // Update scale matrix
-                    this._scaleMatrix = IM.Mat3.multiply(this._scaleMatrix, scaleCenterMatrix, deltaScaleMatrix, scaleCenterInvMatrix);
-                   
                     // Create position delta-matrix
-                    var posX = this._animator.get('PosX');
-                    var posY = this._animator.get('PosY');
                     var deltaPosX = Math.round(posX - this._currentPosX); // Note: Round the position-delta to nearest pixel - otherwise we get sampling artifacts during motion-animations
                     var deltaPosY = Math.round(posY - this._currentPosY);
-                    this._currentPosX = posX;
-                    this._currentPosY = posY;
                     var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
                     
-                    // Update position matrix
-                    this._posMatrix = IM.Mat3.multiply(this._posMatrix, deltaPosMatrix);
-                    
                     // Create rotation delta-matrix
-                    var rotation = this._animator.get('Rotation');
                     var deltaRotation = rotation - this._currentRotation;
-                    this._currentRotation = rotation;
                     var deltaRotationMatrix = IM.Mat3.makeRotation(deltaRotation);
                     
                     // Create rotation-center matrices
@@ -849,12 +811,23 @@
                     var rotationCenterMatrix = IM.Mat3.makeTranslation(rotationCenterX, rotationCenterY);
                     var rotationCenterInvMatrix = IM.Mat3.invert(rotationCenterMatrix);
                     
-                    // Update rotation matrix
-                    this._rotationMatrix = IM.Mat3.multiply(this._rotationMatrix, rotationCenterMatrix, deltaRotationMatrix, rotationCenterInvMatrix);
-                },
-                
-                _getTransformMatrix: function() {
-                    return IM.Mat3.multiply(this._posMatrix, this._rotationMatrix, this._scaleMatrix);
+                    // Update state, if requested
+                    if (updateState) {
+                        this._currentPosX = posX;
+                        this._currentPosY = posY;
+                        this._currentScale = scale;
+                        this._currentRotation = rotation;
+                    }
+                    
+                    return IM.Mat3.multiply(
+                        deltaPosMatrix,
+                        this._transformMatrix,
+                        scaleCenterMatrix, 
+                        deltaScaleMatrix, 
+                        scaleCenterInvMatrix,
+                        rotationCenterMatrix, 
+                        deltaRotationMatrix, 
+                        rotationCenterInvMatrix);
                 },
                 
                 _render: function() {
@@ -862,9 +835,8 @@
                     gl.clear(gl.COLOR_BUFFER_BIT);
                     if (this._initialized && this._tiles) {
                         
-                        this._updateMatrices();
-                        var transformMatrix = this._getTransformMatrix();
-                        var matrix = IM.Mat3.multiply(this._baseMatrix, transformMatrix);
+                        this._transformMatrix = this._makeTransformMatrix({ updateState: true });
+                        var matrix = IM.Mat3.multiply(this._baseMatrix, this._transformMatrix);
                         
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
@@ -900,7 +872,6 @@
             function zoomToFit() { _viewer.zoomToFit(450); }
             function rotate() { _viewer.rotate(1500); }
             function zoom100() { _viewer.zoom(1.0, 650); }
-            function resetMatrices() { _viewer._resetMatrices(); _viewer._invalidate(); }
         
         </script>
     </head>
@@ -911,7 +882,6 @@
             <button onclick='zoomToFit()'>Zoom to fit</button>
             <button onclick='rotate()'>Rotate</button>
             <button onclick='zoom100()'>Zoom 100%</button>
-            <button onclick='resetMatrices()'>Reset Matrices</button>
         </div>
     </body>
 
