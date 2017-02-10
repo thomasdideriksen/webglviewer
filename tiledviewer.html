@@ -455,9 +455,10 @@
                     
                     // Handle mouse wheel events
                     this._canvas.addEventListener('wheel', function(e) {
+                        var duration = 750;
                         var scale = context._animator.get('Scale');
                         var factor = (e.deltaY < 0) ? 2.0 : 0.5;
-                        context._animator.start('Scale', scale * factor, 750);
+                        context._animator.start('Scale', scale * factor, duration);
                         
                         var ptScreen = context._getPositionFromEvent(e);
                         
@@ -469,7 +470,9 @@
                         context._animator.set('ScaleCenterX', ptImage[0]);
                         context._animator.set('ScaleCenterY', ptImage[1]);
                         
+                        context._snapIntoView(duration); // Note: Maybe this doesn't belong here
                         context._invalidate();
+                        
                         return terminateMouseEvent(e);
                     });
                     
@@ -485,7 +488,7 @@
                     // Handle mouse up
                     window.addEventListener('mouseup', function(e) {
                         context._dragStart = undefined;
-                        //context._snapBack();
+                        context._snapIntoView(500);
                         return terminateMouseEvent(e);
                     });
                     
@@ -610,6 +613,7 @@
                     this._animator.set('ScaleCenterY', cy);
                     
                     this._animator.start('Scale', scale, animDuration);
+                    this._snapIntoView(animDuration); // Note: Maybe this doesn't belong here
                     this._invalidate();
                 },
                 
@@ -668,10 +672,9 @@
                     }
                 },
                 
+                _snapIntoView: function(duration) {
                 
-                
-                _snapBack: function() {
-                
+                    // Compute image rectangle
                     var matrix = this._makeTransformMatrix({ 
                         scale: this._animator.getDestination('Scale'), 
                         rotation: this._animator.getDestination('Rotation')});
@@ -681,41 +684,52 @@
                     var width = this._canvas.width;
                     var height = this._canvas.height;
                     
+                    // Get current position
+                    var oldX = this._animator.get('PosX');
+                    var oldY = this._animator.get('PosY');
+                    
                     // Variables
                     var delta = 1;
                     var newX, newY;
                     
+                    // Does the image fit within the canvas?
+                    var fitX = (rect.bounds.width - delta <= width);
+                    var fitY = (rect.bounds.height - delta <= height);
+                    
                     // Handle x axis snapping
-                    if (rect.bounds.x0 < 0 && rect.bounds.width - delta <= width) {
-                        newX = 0;
-                    }
-                    else if (rect.bounds.x1 > width && rect.bounds.width - delta <= width) {
-                        newX = width - rect.bounds.width;
-                    }
-                    else if (rect.bounds.x1 < width && rect.bounds.width > width) {
-                        newX = width - rect.bounds.width;
-                    }
-                    else if (rect.bounds.x0 > 0 && rect.bounds.width > width) {
-                        newX = 0;
+                    if (fitX) {
+                        if (rect.bounds.x0 < 0) {
+                            newX = oldX + Math.abs(rect.bounds.x0);
+                        }
+                        else if (rect.bounds.x1 > width) {
+                            newX = oldX - (rect.bounds.x1 - width);
+                        }
+                    } else {
+                        if (rect.bounds.x1 < width) {
+                            newX = oldX + (width - rect.bounds.x1);
+                        }
+                        else if (rect.bounds.x0 > 0) {
+                            newX = oldX - rect.bounds.x0;
+                        }
                     }
                     
                     // Handle y axis snapping
-                    if (rect.bounds.y0 < 0 && rect.bounds.height - delta <= height) {
-                        newY = 0;
+                    if (fitY) {
+                        if (rect.bounds.y0 < 0) {
+                            newY = oldY + Math.abs(rect.bounds.y0);
+                        }
+                        else if (rect.bounds.y1 > height) {
+                            newY = oldY - (rect.bounds.y1 - height);
+                        }
+                    } else {
+                        if (rect.bounds.y1 < height) {
+                            newY = oldY + (height- rect.bounds.y1);
+                        }
+                        else if (rect.bounds.y0 > 0) {
+                            newY = oldY - rect.bounds.y0;
+                        }
                     }
-                    else if (rect.bounds.y1 > height && rect.bounds.height - delta <= height) {
-                        newY = height - rect.bounds.height;
-                    }
-                    else if (rect.bounds.y1 < height && rect.bounds.height > height) {
-                        newY = height - rect.bounds.height;
-                    }
-                    else if (rect.bounds.y0 > 0 && rect.bounds.height > height) {
-                        newY = 0;
-                    }
-                    
-                    // Start snap animation
-                    var duration = 750;
-                    
+                                        
                     if (newX !== undefined) {
                         this._animator.start('PosX', newX, duration);
                         this._invalidate();
@@ -735,6 +749,8 @@
                     this._intendedRotation -= Math.PI * 0.5;
                     
                     this._animator.start('Rotation', this._intendedRotation, duration);
+                    this._snapIntoView(duration)
+                    
                     this._invalidate();
                 },
                 
@@ -764,6 +780,7 @@
                     bounds.height = bounds.y1 - bounds.y0;
                     
                     var rotation = Math.PI * 2.0 - Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
+                    
                     return {
                         topLeft: tl, 
                         topRight: tr,
@@ -870,7 +887,7 @@
                 });
             }
             function zoomToFit() { _viewer.zoomToFit(450); }
-            function rotate() { _viewer.rotate(1500); }
+            function rotate() { _viewer.rotate(500); }
             function zoom100() { _viewer.zoom(1.0, 650); }
         
         </script>
