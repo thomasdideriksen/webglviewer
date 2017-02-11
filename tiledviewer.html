@@ -334,8 +334,14 @@
                     return this._attributes[name];
                 },
                 
+                inUse: function() {
+                    return (this._gl.getParameter(this._gl.CURRENT_PROGRAM) == this._program);
+                },
+                
                 use: function() {
-                    this._gl.useProgram(this._program);
+                    if (!this.inUse()) {
+                        this._gl.useProgram(this._program);
+                    }
                 },
                 
                 getAttributeLocation: function(name) {
@@ -352,6 +358,64 @@
                 
                 setUniformMatrix3fv: function(name, value) {
                     this._gl.uniformMatrix3fv(this._findUniform(name), false, value);
+                },
+            }
+            
+            //
+            // Offscreen renderer
+            //
+            IM.GL.OffscreenRenderer = function(config, callback) {
+                this._config = config;
+                this._stateStack = [];
+                var context = this;
+                var vertexShaderUrl = this._config.vertexShaderUrl;
+                var fragmentShaderUrl = this._config.fragmentShaderUrl;
+                IM.Helpers.XHRGetMultiple([vertexShaderUrl, fragmentShaderUrl], function(data) {
+                    context.program = new IM.GL.Program(context._config.gl, data[vertexShaderUrl], data[fragmentShaderUrl]);
+                    context._initialized = true;
+                    if (callback) {
+                        callback();
+                    }
+                });
+            }
+            
+            IM.GL.OffscreenRenderer.prototype = {
+                
+                constructor: IM.GL.OffscreenRenderer,
+                
+                renderToTexture: function(texture) {
+                    this._pushState();
+                    
+                    // TODO: Use these functions
+                    
+                    //this._gl.viewport(0, 0, this._thumbnail.textureInfo.width, this._thumbnail.textureInfo.height);
+                    //this._gl.bindFramebuffer(this._gl.FRAMEBUFFER, this._offscreenFramebuffer);
+                    //this._gl.framebufferTexture2D(this._gl.FRAMEBUFFER, this._gl.COLOR_ATTACHMENT0, this._gl.TEXTURE_2D, this._thumbnailTemp, 0);    
+                    //this._programMaskPass1.use();    
+                    //this._gl.bindFramebuffer(this._gl.FRAMEBUFFER, null);
+                    //this._gl.viewport(0, 0, this._gl.drawingBufferWidth, this._gl.drawingBufferHeight);
+                    //this._programDisplay.use();        
+                    //this._offscreenFramebuffer = this._gl.createFramebuffer();
+                    
+                    
+                    this._popState();
+                },
+                
+                _pushState: function() {
+                    var gl = this._config.gl;
+                    this._stateStack.push({
+                        viewport: gl.getParameter(gl.VIEWPORT),
+                        program: gl.getParameter(gl.CURRENT_PROGRAM),
+                        framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING)
+                    });
+                },
+                
+                _popState: function() {
+                    var gl = this._config.gl;
+                    var state = this._stateStack.pop()
+                    gl.viewport(state.viewport[0], state.viewport[1], state.viewport[2], state.viewport[3]);
+                    gl.useProgram(state.program);
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, state.framebuffer);
                 },
             }
             
@@ -874,10 +938,12 @@
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
                         this._program.setUniform1i('Texture', 0);
                         
+                        
+                        
                         gl.activeTexture(gl.TEXTURE0);
                         
                         for (var i = 0; i < this._tiles.length; i++) {
-                            
+                        
                             var tile = this._tiles[i];
                             if (this._config.onBeforeRenderTile) {
                                 tile = this._config.onBeforeRenderTile(tile)
@@ -894,12 +960,14 @@
             
             
             
+            
+            
             //
             // For testing purposes
             //
             var _viewer;
             function init() {
-            
+                        
                 var viewerConfig = {
                     domContainer: document.getElementById('container'),
                     tileSize: 1024
@@ -910,6 +978,18 @@
                         console.log('ready');
                     });
                 });
+                
+                
+                
+                /*
+                var conf = {
+                    gl: _viewer._gl,
+                    vertexShaderUrl: 'viewerVertexShader.glsl',
+                    fragmentShaderUrl: 'viewerFragmentShader.glsl'
+                }
+                var offscreen = new IM.GL.OffscreenRenderer(conf, function() {
+                    offscreen.renderToTexture();
+                });*/
                 
             }
             function zoomToFit() { _viewer.zoomToFit(450); }
