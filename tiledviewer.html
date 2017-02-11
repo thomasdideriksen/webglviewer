@@ -3,8 +3,9 @@
 <html>
 
     <head>
-        <meta charset='utf-8'>
-        <title>Tiled Viewer Test</title>
+        <meta charset='utf-8'/>
+        <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'/>
+        <title>Tiled WebGL Image Viewer</title>
         <style>
             html {
                 width: 100%;
@@ -30,6 +31,7 @@
                 overflow: hidden;
             }
         </style>
+
         <script>
             
             'use strict';
@@ -426,10 +428,8 @@
             //
             IM.Viewer = function(config, callback) {
                 
-                // Store config object and add canvas
-                this._setConfig(config);
+                // Create canvas
                 this._canvas = document.createElement('canvas');
-                this._config.domContainer.appendChild(this._canvas);
                 
                 // Get WebGL context
                 var possibleContextNames = ['webgl', 'experimental-webgl'];
@@ -439,6 +439,12 @@
                 }
                 if (!this._gl) { throw 'Failed to get WebGL context'; }
                 
+                // Set config
+                this._setConfig(config);
+                
+                // Add canvas to DOM
+                this._config.domContainer.appendChild(this._canvas);
+                
                 // Basic WebGL configuration
                 var gl = this._gl;
                 gl.enable(gl.BLEND);
@@ -446,7 +452,7 @@
                 gl.disable(gl.DEPTH_TEST);
                 gl.disable(gl.STENCIL_TEST);
                 gl.disable(gl.CULL_FACE);
-                gl.clearColor(0.1, 0.1, 0.1, 1);
+                gl.clearColor(this._config.clearColor[0], this._config.clearColor[1], this._config.clearColor[2], 1);
                 
                 // Initialize matrices
                 this._baseMatrix = IM.Mat3.makeIdentity();
@@ -472,6 +478,9 @@
                 this._animator.set('Rotation', this._currentRotation);
                 this._animator.set('RotationCenterX', 0);
                 this._animator.set('RotationCenterY', 0);
+
+                // Register mouse/touch/pointer events handlers
+                this._registerPointerEventHandlers();
                 
                 var context = this;
                 
@@ -479,10 +488,7 @@
                 window.addEventListener('resize', function() { context._resize(); });
                 this._resize();
                 
-                // Register mouse events handlers
-                this._registerMouseEventHandlers();
-                
-                // Load shaders and create 
+                // Load shaders and create GL program
                 var vertexShaderUrl = this._config.vertexShaderUrl;
                 var fragmentShaderUrl = this._config.fragmentShaderUrl;
                 IM.Helpers.XHRGetMultiple([vertexShaderUrl, fragmentShaderUrl], function(data) {
@@ -504,7 +510,8 @@
                     this._config = {
                         tileSize: 1024,
                         vertexShaderUrl: 'viewerVertexShader.glsl',
-                        fragmentShaderUrl: 'viewerFragmentShader.glsl'
+                        fragmentShaderUrl: 'viewerFragmentShader.glsl',
+                        clearColor: [0.1, 0.1, 0.1],
                     }
                     
                     // Override defaults with user supplied values
@@ -513,23 +520,25 @@
                     }
                     
                     //
-                    // Sanity checks
+                    // Sanity checks, etc.
                     // 
-                    
-                    // Check that tilesize is POT
-                    var check = Math.log(this._config.tileSize) / Math.log(2);
-                    var diff = check - Math.floor(check);
-                    if (Math.abs(diff) > Number.EPSILON) {
-                        throw 'Invalid tile size (' + this._config.tileSize + '), must be power-of-two';
-                    }
                     
                     // Check that we have a DOM container object
                     if (!this._config.domContainer) { 
-                        throw 'domContainer must be specified'; 
+                        throw '[Viewer configuration] "domContainer" must be specified'; 
+                    }
+                    
+                    // Check and fix tile size
+                    var log2 = Math.log(this._config.tileSize) / Math.log(2);
+                    var tileSize = Math.pow(2, Math.floor(log2));
+                    tileSize = Math.max(128, Math.min(tileSize, this._gl.getParameter(this._gl.MAX_TEXTURE_SIZE)));
+                    if (this._config.tileSize != tileSize) {
+                        console.warn('[Viewer configuration] Changed "tileSize" from ' + this._config.tileSize + ' to ' + tileSize + ' to improve performance');
+                        this._config.tileSize = tileSize;
                     }
                 },
                 
-                _registerMouseEventHandlers: function() {
+                _registerPointerEventHandlers: function() {
                     
                     // Mouse event helper function
                     var terminateMouseEvent = function(e) {
@@ -570,33 +579,66 @@
                         return terminateMouseEvent(e);
                     });
                     
-                    // Handle mouse down
-                    this._canvas.addEventListener('mousedown', function(e) {
-                        context._dragStart = [e.clientX, e.clientY];
+                    var pointerStart = function(e, clientX, clientY) {
+                        context._dragStart = [clientX, clientY];
                         context._dragStartPos = [
                             context._animator.get('PosX'),
                             context._animator.get('PosY')];
                         return terminateMouseEvent(e);
-                    });
+                    }
                     
-                    // Handle mouse up
-                    window.addEventListener('mouseup', function(e) {
+                    var pointerEnd = function(e) {
                         context._dragStart = undefined;
                         context._snapIntoView(500);
                         return terminateMouseEvent(e);
-                    });
+                    }
                     
-                    // Handle mouse move
-                    window.addEventListener('mousemove', function(e) {
+                    var pointerMove = function(e, clientX, clientY) {
                         if (context._dragStart) {
-                            var pt = [e.clientX, e.clientY];
+                            var pt = [clientX, clientY];
+                            var ratio = context._getDpiRatio();
                             var dx = pt[0] - context._dragStart[0];
                             var dy = pt[1] - context._dragStart[1];
-                            context._animator.set('PosX', context._dragStartPos[0] + dx);
-                            context._animator.set('PosY', context._dragStartPos[1] + dy);
+                            context._animator.set('PosX', context._dragStartPos[0] + dx * ratio);
+                            context._animator.set('PosY', context._dragStartPos[1] + dy * ratio);
                             context._invalidate();
                             return terminateMouseEvent(e);
                         }
+                    }
+                    
+                    this._canvas.addEventListener('gesturestart', function(e) {
+                        
+                    });
+                    
+                    this._canvas.addEventListener('gesturechange', function(e) {
+                        var scale = context._animator.get('Scale');
+                        context._animator.set('Scale', scale * e.scale);
+                        context._invalidate();
+                    });
+                    
+                    this._canvas.addEventListener('touchstart', function(e) {
+                        return pointerStart(e, e.touches[0].clientX, e.touches[0].clientY);
+                    });
+                    
+
+                    this._canvas.addEventListener('mousedown', function(e) {
+                        return pointerStart(e, e.clientX, e.clientY);
+                    });
+                    
+                    this._canvas.addEventListener('touchend', function(e) {
+                        return pointerEnd(e);
+                    });
+                                      
+                    window.addEventListener('mouseup', function(e) {
+                        return pointerEnd(e);
+                    });
+                    
+                    window.addEventListener('mousemove', function(e) {
+                       return pointerMove(e, e.clientX, e.clientY)
+                    });
+                    
+                    window.addEventListener('touchmove', function(e) {
+                       return pointerMove(e, e.touches[0].clientX, e.touches[0].clientY);
                     });
                 },
                 
@@ -719,7 +761,11 @@
                     cvs.width = width;
                     cvs.height = height;
                     var ctx = cvs.getContext('2d');
-                    ctx.drawImage(im, x, y, width, height, 0, 0, width, height);
+                    var maxWidth = im.width - x;
+                    var maxHeight = im.height - y;
+                    var w = Math.min(maxWidth, width);
+                    var h = Math.min(maxHeight, height);
+                    ctx.drawImage(im, x, y, w, h, 0, 0, w, h);
                     return cvs;
                 },
                 
@@ -737,19 +783,37 @@
                     return tex;
                 },
                 
+                _getDpiRatio: function() {
+                    var gl = this._gl;
+                    var devicePixelRatio = window.devicePixelRatio || 1;
+                    var backingStorePixelRatio = gl.webkitBackingStorePixelRatio ||
+                                                 gl.mozBackingStorePixelRatio ||
+                                                 gl.msBackingStorePixelRatio ||
+                                                 gl.oBackingStorePixelRatio ||
+                                                 gl.backingStorePixelRatio || 1;
+                    return devicePixelRatio / backingStorePixelRatio;
+                },
+                
                 _resize: function() {
                     var style = window.getComputedStyle(this._config.domContainer);
                     var width = Math.ceil(parseFloat(style.width));
                     var height = Math.ceil(parseFloat(style.height));
-                    this._canvas.width = width;
-                    this._canvas.height = height;
-                    this._gl.viewport(0, 0, width, height);
-                    this._gl.scissor(0, 0, width, height);
+                    
+                    var ratio = this._getDpiRatio();
+                    var pixelWidth = Math.round(width * ratio);
+                    var pixelHeight = Math.round(height * ratio);
+                    
+                    this._canvas.style.width = width + 'px';
+                    this._canvas.style.height = height + 'px';
+                    this._canvas.width = pixelWidth;
+                    this._canvas.height = pixelHeight;
+                    this._gl.viewport(0, 0, pixelWidth, pixelHeight);
+                    this._gl.scissor(0, 0, pixelWidth, pixelHeight);
                     
                     // Create 'base matrix' (including aspect-ratio, topleft-origin, pixel-scale)
                     var m0 = IM.Mat3.makeScale(1, -1);
                     var m1 = IM.Mat3.makeTranslation(-1, -1);
-                    var m2 = IM.Mat3.makeScale(2 / width, 2 / height);
+                    var m2 = IM.Mat3.makeScale(2 / pixelWidth, 2 / pixelHeight);
                     this._baseMatrix = IM.Mat3.multiply(m0, m1, m2);
                     
                     this._invalidate();
@@ -894,8 +958,8 @@
                     var scaleCenterInvMatrix = IM.Mat3.invert(scaleCenterMatrix);
                     
                     // Create position delta-matrix
-                    var deltaPosX = Math.round(posX - this._currentPosX); // Note: Round the position-delta to nearest pixel - otherwise we get sampling artifacts during motion-animations
-                    var deltaPosY = Math.round(posY - this._currentPosY);
+                    var deltaPosX = (posX - this._currentPosX); // Note: Rounding these coordinates fixes interpolation artifacts during animations, but it also introduces accumulating errors in the transformation matrix
+                    var deltaPosY = (posY - this._currentPosY);
                     var deltaPosMatrix = IM.Mat3.makeTranslation(deltaPosX, deltaPosY);
                     
                     // Create rotation delta-matrix
@@ -969,10 +1033,14 @@
             //
             var _viewer;
             function init() {
+            
+                
+
                         
                 var viewerConfig = {
                     domContainer: document.getElementById('container'),
-                    tileSize: 1024
+                    tileSize: 1024,
+                    clearColor: [1, 0, 0],
                 };
             
                 _viewer = new IM.Viewer(viewerConfig, function() {
@@ -997,6 +1065,9 @@
             function zoomToFit() { _viewer.zoomToFit(450); }
             function rotate() { _viewer.rotate(500); }
             function zoom100() { _viewer.zoom(1.0, 650); }
+            function log(text) {
+                document.getElementById('log').innerHTML += text + ', ';
+            }
         
         </script>
     </head>
@@ -1007,6 +1078,8 @@
             <button onclick='zoomToFit()'>Zoom to fit</button>
             <button onclick='rotate()'>Rotate</button>
             <button onclick='zoom100()'>Zoom 100%</button>
+        </div>
+        <div id='log' style='color: white;'>
         </div>
     </body>
 
