@@ -354,6 +354,10 @@
                     this._gl.uniform1f(this._findUniform(name), value);
                 },
                 
+                setUniform2f: function(name, x, y) {
+                    this._gl.uniform2f(this._findUniform(name), x, y);
+                },
+                
                 setUniform1i: function(name, value) {
                     this._gl.uniform1i(this._findUniform(name), value);
                 },
@@ -1003,8 +1007,6 @@
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
                         this._program.setUniform1i('Texture', 0);
-                        
-                        
                         
                         gl.activeTexture(gl.TEXTURE0);
                         
