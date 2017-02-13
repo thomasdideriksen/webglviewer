@@ -584,8 +584,8 @@
                     var getPositionFromEvent =  function(e) {
                         var clientX = e.clientX || e.touches[0].clientX;
                         var clientY = e.clientY || e.touches[0].clientY;
-                        var x = clientX - e.target.offsetLeft;
-                        var y = clientY - e.target.offsetTop;
+                        var x = clientX - context._canvas.offsetLeft;
+                        var y = clientY - context._canvas.offsetTop;
                         var ratio = context._getDpiRatio();
                         return new Float32Array([x * ratio, y * ratio]);
                     }
