@@ -191,16 +191,14 @@
             }
             
             IM.Mat3.multiply = function() {
-                switch (arguments.length) {
-                    case 0: return null;
-                    case 1: return arguments[0];
-                    default:
-                        var res = IM.Mat3.multiplyTwo(arguments[0], arguments[1]);
-                        for (var i = 2; i < arguments.length; i++) {
-                            res = IM.Mat3.multiplyTwo(res, arguments[i]);
-                        }
-                        return res;
+                if (arguments.length < 2) {
+                    throw 'Matrix multiply function needs two or more paramaters';
                 }
+                var res = IM.Mat3.multiplyTwo(arguments[0], arguments[1]);
+                for (var i = 2; i < arguments.length; i++) {
+                    res = IM.Mat3.multiplyTwo(res, arguments[i]);
+                }
+                return res;
             }
             
             IM.Mat3.transpose = function(a) {
@@ -395,10 +393,23 @@
             }
             
             //
+            // Make a quad with texture coordinates
+            //
+            IM.GL.makeQuad = function(x, y, w, h, texW, texH) {
+                return [x, y, 0, 0,               // 0-2
+                        x, y + h, 0, texH,        // |/
+                        x + w, y, texW, 0,        // 1
+                        x, y + h, 0, texH,        //   2
+                        x + w, y + h, texW, texH, //  /|
+                        x + w, y, texW, 0];       // 0-1
+            },
+            
+            //
             // Offscreen renderer
             //
             IM.GL.OffscreenRenderer = function(config, callback) {
-                this._config = config;
+                this._setConfig(config);
+                
                 this._stateStack = [];
                 var context = this;
                 var vertexShaderUrl = this._config.vertexShaderUrl;
@@ -416,8 +427,39 @@
                 
                 constructor: IM.GL.OffscreenRenderer,
                 
-                renderToTexture: function(texture) {
+                _setConfig: function(config) {
+                    this._config = {
+                        // Defaults
+                    }
+                    for (var key in config) {
+                        this._config[key] = config[key];
+                    }
+                    
+                    var gl = this._config.gl;
+                    
+                    if (!gl) {
+                        throw '[OffscreenRenderer config] No GL context specified';
+                    }
+                    
+                    if (!this._config.frameBuffer) {
+                        this._config.frameBuffer = gl.createFramebuffer();
+                    }
+                },
+                
+                renderToTexture: function(targetTexture) {
                     this._pushState();
+                    
+                    this.program.use();
+                    
+                    var gl = this._config.gl;
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, this._config.frameBuffer);
+                    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
+                    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+                        console.error('Incomplete framebuffer');
+                    }
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                    
+                    
                     
                     // TODO: Use these functions
                     
@@ -441,7 +483,9 @@
                     this._stateStack.push({
                         viewport: gl.getParameter(gl.VIEWPORT),
                         program: gl.getParameter(gl.CURRENT_PROGRAM),
-                        framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING)
+                        framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING),
+                        arrayBuffer: gl.getParameter(gl.ARRAY_BUFFER_BINDING),
+                        elementArrayBuffer: gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING),
                     });
                 },
                 
@@ -451,6 +495,8 @@
                     gl.viewport(state.viewport[0], state.viewport[1], state.viewport[2], state.viewport[3]);
                     gl.useProgram(state.program);
                     gl.bindFramebuffer(gl.FRAMEBUFFER, state.framebuffer);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, state.arrayBuffer);
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, state.elementArrayBuffer);
                 },
             }
             
@@ -685,15 +731,6 @@
                     });
                 },
                 
-                _createQuad: function(x, y, w, h, texW, texH) {
-                    return [x,     y,     0,    0,     // 0-2
-                            x,     y + h, 0,    texH,  // |/
-                            x + w, y,     texW, 0,     // 1
-                            x,     y + h, 0,    texH,  //   2
-                            x + w, y + h, texW, texH,  //  /|
-                            x + w, y,     texW, 0];    // 0-1
-                },
-                
                 setImageByUrl: function(url, callback) {
                     var im = new Image();
                     var context = this;
@@ -730,7 +767,7 @@
                             this._tiles.push(tileTex);
                             
                             // Create geometry quad and append it to vertex/UV array
-                            var quad = this._createQuad(x, y, width, height, width / widthPot, height / heightPot);
+                            var quad = IM.GL.makeQuad(x, y, width, height, width / widthPot, height / heightPot);
                             Array.prototype.push.apply(buffer, quad);
                         }
                     }
@@ -1074,33 +1111,16 @@
             //
             var _viewer;
             function init() {
-            
                 
-
-                        
                 var viewerConfig = {
                     domContainer: document.getElementById('container'),
                     tileSize: 1024,
-                    //clearColor: [1, 0, 0],
                 };
-            
                 _viewer = new IM.Viewer(viewerConfig, function() {
                     _viewer.setImageByUrl('image.jpg', function() {
                         console.log('ready');
                     });
                 });
-                
-                
-                
-                /* 
-                var conf = {
-                    gl: _viewer._gl,
-                    vertexShaderUrl: 'viewerVertexShader.glsl',
-                    fragmentShaderUrl: 'viewerFragmentShader.glsl'
-                }
-                var offscreen = new IM.GL.OffscreenRenderer(conf, function() {
-                    offscreen.renderToTexture();
-                });*/
                 
             }
             function zoomToFit() { _viewer.zoomToFit(750); }
