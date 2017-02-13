@@ -5,6 +5,7 @@
     <head>
         <meta charset='utf-8'/>
         <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'/>
+        <link href="https://fonts.googleapis.com/css?family=Open+Sans+Condensed:300" rel="stylesheet">
         <title>Tiled WebGL Image Viewer</title>
         <style>
             html {
@@ -21,14 +22,40 @@
                 display: flex;
                 flex-flow: column nowrap;
                 background: #202020;
-                justify-content: center;
-                align-items: center;
             }
             #container {
-                width: 90%;
-                height: 86%;
-                border: 1px solid white;
+                flex: 1 1 auto;
                 overflow: hidden;
+            }
+            #controls {
+                flex: 0 0 48px;
+                display: flex;
+                flex-flow: row nowrap;
+                border-top: 1px solid #404040;
+            }
+            .control {
+                flex: 0 0 75px;
+                font-family: 'Open Sans Condensed', sans-serif;
+                color: #808080;
+                font-size: 0.9em;
+                cursor: pointer;
+                line-height: 48px;
+                text-align: center;
+                border-right: 1px solid #404040;
+                text-transform: uppercase;
+               -webkit-touch-callout: none;
+               -webkit-user-select: none;
+               -khtml-user-select: none;
+               -moz-user-select: none;
+               -ms-user-select: none;
+                user-select: none;
+                transition: background 0.15s ease-out;
+            }
+            .control:hover, .control:focus {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            .control:active {
+                background: rgba(255, 255, 255, 0.16);
             }
         </style>
 
@@ -544,6 +571,8 @@
                 
                 _registerPointerEventHandlers: function() {
                     
+                    var context = this;
+                    
                     // Mouse event helper function
                     var terminateMouseEvent = function(e) {
                         e.preventDefault();
@@ -553,12 +582,20 @@
                     
                     // Get position relative to DOM target
                     var getPositionFromEvent =  function(e) {
-                        var x = e.clientX - e.target.offsetLeft;
-                        var y = e.clientY - e.target.offsetTop;
-                        return new Float32Array([x, y]);
+                        var clientX = e.clientX || e.touches[0].clientX;
+                        var clientY = e.clientY || e.touches[0].clientY;
+                        var x = clientX - e.target.offsetLeft;
+                        var y = clientY - e.target.offsetTop;
+                        var ratio = context._getDpiRatio();
+                        return new Float32Array([x * ratio, y * ratio]);
                     }
                     
-                    var context = this;
+                    var getImagePositionFromEvent = function(e) {
+                        var ptScreen = getPositionFromEvent(e);
+                        var matrix = context._makeTransformMatrix();
+                        var matrixInv = IM.Mat3.invert(matrix);
+                        return IM.Mat3.transformPoint(matrixInv, ptScreen[0], ptScreen[1]);
+                    }
                     
                     // Handle mouse wheel events
                     this._canvas.addEventListener('wheel', function(e) {
@@ -567,13 +604,7 @@
                         var factor = (e.deltaY < 0) ? 2.0 : 0.5;
                         context._animator.start('Scale', scale * factor, duration);
                         
-                        var ptScreen = getPositionFromEvent(e);
-                        
-                        var matrix = context._makeTransformMatrix();
-                        var matrixInv = IM.Mat3.invert(matrix);
-                    
-                        var ptImage = IM.Mat3.transformPoint(matrixInv, ptScreen[0], ptScreen[1]);
-                        
+                        var ptImage = getImagePositionFromEvent(e);                        
                         context._animator.set('ScaleCenterX', ptImage[0]);
                         context._animator.set('ScaleCenterY', ptImage[1]);
                         
@@ -584,7 +615,7 @@
                     });
                     
                     var pointerStart = function(e, clientX, clientY) {
-                        context._dragStart = [clientX, clientY];
+                        context._dragStart = getPositionFromEvent(e);
                         context._dragStartPos = [
                             context._animator.get('PosX'),
                             context._animator.get('PosY')];
@@ -599,24 +630,32 @@
                     
                     var pointerMove = function(e, clientX, clientY) {
                         if (context._dragStart) {
-                            var pt = [clientX, clientY];
-                            var ratio = context._getDpiRatio();
+                            var pt = getPositionFromEvent(e);
                             var dx = pt[0] - context._dragStart[0];
                             var dy = pt[1] - context._dragStart[1];
-                            context._animator.set('PosX', context._dragStartPos[0] + dx * ratio);
-                            context._animator.set('PosY', context._dragStartPos[1] + dy * ratio);
+                            context._animator.set('PosX', context._dragStartPos[0] + dx);
+                            context._animator.set('PosY', context._dragStartPos[1] + dy);
                             context._invalidate();
                             return terminateMouseEvent(e);
                         }
                     }
                     
+                    var initGestureScale;
+                    var initGestureRotation;
                     this._canvas.addEventListener('gesturestart', function(e) {
-                        
+                        var ptImage = getImagePositionFromEvent(e);
+                        context._animator.set('ScaleCenterX', ptImage[0]);
+                        context._animator.set('ScaleCenterY', ptImage[1]);
+                        context._animator.set('RotationCenterX', ptImage[0]);
+                        context._animator.set('RotationCenterY', ptImage[1]);
+                        initGestureScale = context._animator.get('Scale');
+                        initGestureRotation = context._animator.get('Rotation');
                     });
                     
                     this._canvas.addEventListener('gesturechange', function(e) {
-                        var scale = context._animator.get('Scale');
-                        context._animator.set('Scale', scale * e.scale);
+                        var deg2rad = function(deg) { return deg / 180 * Math.PI; }
+                        context._animator.set('Rotation', initGestureRotation - deg2rad(e.rotation));
+                        context._animator.set('Scale', initGestureScale * e.scale);
                         context._invalidate();
                     });
                     
@@ -1042,7 +1081,7 @@
                 var viewerConfig = {
                     domContainer: document.getElementById('container'),
                     tileSize: 1024,
-                    clearColor: [1, 0, 0],
+                    //clearColor: [1, 0, 0],
                 };
             
                 _viewer = new IM.Viewer(viewerConfig, function() {
@@ -1064,24 +1103,20 @@
                 });*/
                 
             }
-            function zoomToFit() { _viewer.zoomToFit(450); }
+            function zoomToFit() { _viewer.zoomToFit(750); }
+            function zoom100() { _viewer.zoom(1.0, 750); }
             function rotate() { _viewer.rotate(500); }
-            function zoom100() { _viewer.zoom(1.0, 650); }
-            function log(text) {
-                document.getElementById('log').innerHTML += text + ', ';
-            }
         
         </script>
     </head>
     
     <body onload='init()'>
         <div id='container'></div>
-        <div style='margin: 16px;'>
-            <button onclick='zoomToFit()'>Zoom to fit</button>
-            <button onclick='rotate()'>Rotate</button>
-            <button onclick='zoom100()'>Zoom 100%</button>
-        </div>
-        <div id='log' style='color: white;'>
+        <div id='controls'>
+            <div class='control' onclick='zoomToFit()'>Zoom/fit</div>
+            <div class='control' onclick='zoom100()'>Zoom/100%</div>
+            <div class='control' onclick='rotate()'>Rotate</div>
+            
         </div>
     </body>
 
