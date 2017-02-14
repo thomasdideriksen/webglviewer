@@ -192,7 +192,7 @@
             
             IM.Mat3.multiply = function() {
                 if (arguments.length < 2) {
-                    throw 'Matrix multiply function needs two or more paramaters';
+                    throw 'Matrix multiply function needs two or more parameters';
                 }
                 var res = IM.Mat3.multiplyTwo(arguments[0], arguments[1]);
                 for (var i = 2; i < arguments.length; i++) {
