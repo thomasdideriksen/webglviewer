@@ -745,9 +745,18 @@
                 
                 setImage: function(im) {
                     
+                    var gl = this._gl;
+                    
+                    // Delete old textures if they exist
+                    if (this._tiles) {
+                        for (var i = 0; i < this._tiles.length; i++) {
+                            gl.deleteTexture(this._tiles[i]);
+                        }
+                    }
+                    
                     // Create tiles and geometry
-                    this._imageSize = [im.width, im.height];
                     this._tiles = [];
+                    this._imageSize = [im.width, im.height];
                     var buffer = [];
                     var tileSize = this._config.tileSize;
                     var roundPot = function(x) { return Math.pow(2.0, Math.ceil(Math.log(x) / Math.log(2.0))); }
@@ -772,21 +781,27 @@
                         }
                     }
                     
-                    this._program.use();
-                    var gl = this._gl;
+                    // Delete old buffer if it already exists
+                    if (this._buffer) {
+                        gl.deleteBuffer(this._buffer);
+                    }
                     
-                    // Create buffer
+                    // Create and initialize new buffer
                     this._buffer = gl.createBuffer();
                     gl.bindBuffer(gl.ARRAY_BUFFER, this._buffer);
                     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(buffer), gl.STATIC_DRAW);
                     
+                    // Use program
+                    this._program.use();
+                    
                     // Enable and configure buffer
                     var bufferLocation = this._program.getAttributeLocation('PositionTexCoord');
-                    gl.enableVertexAttribArray(bufferLocation);
+                    gl.enableVertexAttribArray(bufferLocation); // Note: This operates on the currently bound ARRAY_BUFFER
                     gl.vertexAttribPointer(bufferLocation, 4, gl.FLOAT, false, 0, 0);
                     
                     // Zoom to fit and fade in
                     this.zoomToFit(0);
+                    this._animator.set('Alpha', 0);
                     this._animator.start('Alpha', 1, 800);
                     this._invalidate();
                 },
@@ -1110,6 +1125,8 @@
             // For testing purposes
             //
             var _viewer;
+            var _swap = 0;
+            var _swapping = false;
             function init() {
                 
                 var viewerConfig = {
@@ -1126,6 +1143,15 @@
             function zoomToFit() { _viewer.zoomToFit(750); }
             function zoom100() { _viewer.zoom(1.0, 750); }
             function rotate() { _viewer.rotate(500); }
+            function swapImage() { 
+                if (!_swapping) {
+                    _swapping = true;
+                    _viewer.setImageByUrl((_swap % 2 == 0) ? 'image.png' : 'image.jpg', function() {
+                        _swap += 1;
+                        _swapping = false;
+                    });
+                }
+            }
         
         </script>
     </head>
@@ -1136,6 +1162,7 @@
             <div class='control' onclick='zoomToFit()'>Zoom/fit</div>
             <div class='control' onclick='zoom100()'>Zoom/100%</div>
             <div class='control' onclick='rotate()'>Rotate</div>
+            <div class='control' onclick='swapImage()'>Swap image</div>
             
         </div>
     </body>
