@@ -531,37 +531,18 @@
                 gl.disable(gl.CULL_FACE);
                 gl.clearColor(this._config.clearColor[0], this._config.clearColor[1], this._config.clearColor[2], 1);
                 
-                // Initialize matrices
-                this._baseMatrix = IM.Mat3.makeIdentity();
-                this._transformMatrix = IM.Mat3.makeIdentity();
-                
-                // Initialize transformation state
-                this._currentScale = 1.0;
-                this._currentPosX = 0.0;
-                this._currentPosY = 0.0;
-                this._currentRotation = 0.0;
-                this._intendedRotation = 0.0;
-                
                 // Create animator
                 this._animator = new IM.Animator();
                 
-                // Initialize animated values
-                this._animator.set('Alpha', 0);
-                this._animator.set('Scale', this._currentScale);
-                this._animator.set('ScaleCenterX', 0);
-                this._animator.set('ScaleCenterY', 0);
-                this._animator.set('PosX', this._currentPosX);
-                this._animator.set('PosY', this._currentPosY);
-                this._animator.set('Rotation', this._currentRotation);
-                this._animator.set('RotationCenterX', 0);
-                this._animator.set('RotationCenterY', 0);
-
+                // Initialize various state
+                this._baseMatrix = IM.Mat3.makeIdentity();
+                this._resetState();
+                
                 // Register mouse/touch/pointer events handlers
                 this._registerPointerEventHandlers();
                 
-                var context = this;
-                
                 // Handle window resize
+                var context = this;
                 window.addEventListener('resize', function() { context._resize(); });
                 this._resize();
                 
@@ -613,6 +594,29 @@
                         console.warn('[Viewer configuration] Changed "tileSize" from ' + this._config.tileSize + ' to ' + tileSize + ' to improve performance');
                         this._config.tileSize = tileSize;
                     }
+                },
+                
+                _resetState: function() {
+                    // Initialize matrices
+                    this._transformMatrix = IM.Mat3.makeIdentity();
+                    
+                    // Initialize transformation state
+                    this._currentScale = 1.0;
+                    this._currentPosX = 0.0;
+                    this._currentPosY = 0.0;
+                    this._currentRotation = 0.0;
+                    this._intendedRotation = 0.0;
+                    
+                    // Initialize animated values
+                    this._animator.set('Alpha', 0);
+                    this._animator.set('Scale', this._currentScale);
+                    this._animator.set('ScaleCenterX', 0);
+                    this._animator.set('ScaleCenterY', 0);
+                    this._animator.set('PosX', this._currentPosX);
+                    this._animator.set('PosY', this._currentPosY);
+                    this._animator.set('Rotation', this._currentRotation);
+                    this._animator.set('RotationCenterX', 0);
+                    this._animator.set('RotationCenterY', 0);
                 },
                 
                 _registerPointerEventHandlers: function() {
@@ -798,10 +802,12 @@
                     var bufferLocation = this._program.getAttributeLocation('PositionTexCoord');
                     gl.enableVertexAttribArray(bufferLocation); // Note: This operates on the currently bound ARRAY_BUFFER
                     gl.vertexAttribPointer(bufferLocation, 4, gl.FLOAT, false, 0, 0);
+
+                    // Reset state
+                    this._resetState();
                     
                     // Zoom to fit and fade in
                     this.zoomToFit(0);
-                    this._animator.set('Alpha', 0);
                     this._animator.start('Alpha', 1, 800);
                     this._invalidate();
                 },
