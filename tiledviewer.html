@@ -754,7 +754,7 @@
                     // Delete old textures if they exist
                     if (this._tiles) {
                         for (var i = 0; i < this._tiles.length; i++) {
-                            gl.deleteTexture(this._tiles[i]);
+                            gl.deleteTexture(this._tiles[i].texture);
                         }
                     }
                     
@@ -776,8 +776,15 @@
                             
                             // Create tile texture
                             var tileIm = this._cropImage(im, x, y, widthPot, heightPot);
-                            var tileTex = this._createTexture(tileIm);
-                            this._tiles.push(tileTex);
+                            this._tiles.push({
+                                texture: this._createTexture(tileIm),
+                                x: x,
+                                y: y,
+                                pixelWidth: widthPot,
+                                pixelHeight: heightPot,
+                                logicalWidth: width,
+                                logicalHeight: height,
+                            });
                             
                             // Create geometry quad and append it to vertex/UV array
                             var quad = IM.GL.makeQuad(x, y, width, height, width / widthPot, height / heightPot);
@@ -1015,6 +1022,7 @@
                         return Math.sqrt(dx * dx + dy * dy);
                     }
                     
+                    // Compute axis-aligned bounds
                     var bounds = {
                         x0: Math.min(tl[0], Math.min(tr[0], Math.min(bl[0], br[0]))),
                         x1: Math.max(tl[0], Math.max(tr[0], Math.max(bl[0], br[0]))),
@@ -1025,8 +1033,10 @@
                     bounds.width = bounds.x1 - bounds.x0;
                     bounds.height = bounds.y1 - bounds.y0;
                     
+                    // Compute rotation
                     var rotation = Math.PI * 2.0 - Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
                     
+                    // Return values
                     return {
                         topLeft: tl, 
                         topRight: tr,
@@ -1094,30 +1104,55 @@
                 },
                 
                 _render: function() {
+                    
+                    // Clear canvas
                     var gl = this._gl;
                     gl.clear(gl.COLOR_BUFFER_BIT);
+                    
                     if (this._initialized && this._tiles) {
                         
+                        // Compute matrix
                         this._transformMatrix = this._makeTransformMatrix({ updateState: true });
                         var matrix = IM.Mat3.multiply(this._baseMatrix, this._transformMatrix);
                         
+                        // Set uniforms
                         this._program.setUniformMatrix3fv('Matrix', matrix);
                         this._program.setUniform1f('Alpha', this._animator.get('Alpha'));
                         this._program.setUniform1i('Texture', 0);
                         
+                        // Pre-render hook
+                        if (this._config.onPreRender) {
+                            this._config.onPreRender({ 
+                                fullWidth: this._imageSize[0],
+                                fullHeight: this._imageSize[1],
+                                program: this._program, 
+                                transformMatrix: this._transformMatrix,
+                            });
+                        }
+                        
+                        // Enable texture unit 0
                         gl.activeTexture(gl.TEXTURE0);
                         
                         for (var i = 0; i < this._tiles.length; i++) {
                         
-                            var tile = this._tiles[i];
-                            if (this._config.onBeforeRenderTile) {
-                                tile = this._config.onBeforeRenderTile(tile)
+                            // Pre-render-tile hook
+                            if (this._config.onPreRenderTile) {
+                                this._config.onPreRenderTile({ 
+                                    fullWidth: this._imageSize[0],
+                                    fullHeight: this._imageSize[1],
+                                    program: this._program, 
+                                    transformMatrix: this._transformMatrix,
+                                    tileData: this._tiles[i],
+                                });
                             }
                         
-                            gl.bindTexture(gl.TEXTURE_2D, tile);
+                            // Bind texture and draw
+                            gl.bindTexture(gl.TEXTURE_2D, this._tiles[i].texture);
                             gl.drawArrays(gl.TRIANGLES, i * 6, 6);
                         }
                     }
+                    
+                    // Return true if ALL animations completed and no further rendering is necessary, otherwise false
                     return this._animator.finished();
                 },
             }
