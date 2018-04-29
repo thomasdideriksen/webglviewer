@@ -456,8 +456,8 @@ IM.Viewer.prototype = {
 
         // Get position relative to DOM target
         var getPositionFromEvent =  function(e) {
-            var clientX = e.clientX || e.touches[0].clientX;
-            var clientY = e.clientY || e.touches[0].clientY;
+            var clientX = (e.clientX !== undefined) ? e.clientX : e.touches[0].clientX;
+            var clientY = (e.clientY !== undefined) ? e.clientY : e.touches[0].clientY;
             var x = clientX - context._canvas.offsetLeft;
             var y = clientY - context._canvas.offsetTop;
             var ratio = context._getDpiRatio();
@@ -498,10 +498,49 @@ IM.Viewer.prototype = {
 
         var pointerEnd = function(e) {
             context._dragStart = undefined;
+            
+            if (moves.length >= 2) {
+                
+                // Compute delay modifier (aka. time since last move)
+                var dt = Date.now() - lastMoveTime;
+                var timeThreshold = 150;
+                dt = Math.min(dt, timeThreshold) / timeThreshold;
+                dt = 1 - dt;
+                dt = dt * dt * dt * dt;
+                
+                // Get direction vector
+                var dx = moves[0][0] - moves[moves.length - 1][0];
+                var dy = moves[0][1] - moves[moves.length - 1][1];
+                
+                // Normalize direction vector
+                var dist = Math.sqrt(dx * dx + dy * dy);
+                dx /= dist;
+                dy /= dist
+                
+                // Scale direction vector
+                var scale = Math.min(dist, 100) * dt * 4;
+                dx *= scale
+                dy *= scale
+                
+                // Compute animation duration
+                var duration = Math.max(Math.min(scale * 4, 800), 200)
+                
+                // Start animation
+                var newPosX = context._animator.get('PosX') - dx;
+                var newPosY = context._animator.get('PosY') - dy;
+                context._animator.start('PosX', newPosX, duration);
+                context._animator.start('PosY', newPosY, duration);
+                context._invalidate();
+            }
+            
             context._snapIntoView(500);
+            moves = []
+            
             return terminateMouseEvent(e);
         }
 
+        var lastMoveTime;
+        var moves = []
         var pointerMove = function(e, clientX, clientY) {
             if (context._dragStart) {
                 var pt = getPositionFromEvent(e);
@@ -510,6 +549,12 @@ IM.Viewer.prototype = {
                 context._animator.set('PosX', context._dragStartPos[0] + dx);
                 context._animator.set('PosY', context._dragStartPos[1] + dy);
                 context._invalidate();
+                lastMoveTime = Date.now();
+                moves.push(pt)
+                var maxMoves = 5;
+                if (moves.length > maxMoves) {
+                    moves.splice(0, moves.length - maxMoves)
+                }
                 return terminateMouseEvent(e);
             }
         }
@@ -536,7 +581,6 @@ IM.Viewer.prototype = {
         this._canvas.addEventListener('touchstart', function(e) {
             return pointerStart(e, e.touches[0].clientX, e.touches[0].clientY);
         });
-
 
         this._canvas.addEventListener('mousedown', function(e) {
             return pointerStart(e, e.clientX, e.clientY);
