@@ -22,6 +22,7 @@
                 display: flex;
                 flex-flow: column nowrap;
                 background: #202020;
+                overflow: hidden;
             }
             #container {
                 flex: 1 1 auto;
@@ -79,9 +80,9 @@
                 await _viewer.setImageByUrl('image.jpg');
                 console.log('ready');
             }
-            function zoomToFit() { _viewer.zoomToFit(750); }
-            function zoom100() { _viewer.zoom(1.0, 750); }
-            function rotate() { _viewer.rotate(500); }
+            function zoomToFit() { _viewer.zoomToFit(750);  }
+            function zoom100()   { _viewer.zoom(1.0, 750);  }
+            function rotate()    { _viewer.rotate(500);     }
             async function swapImage() {
                 await _viewer.setImageByUrl((_swap % 2 == 0) ? 'image.png' : 'image.jpg');
                 _swap += 1;

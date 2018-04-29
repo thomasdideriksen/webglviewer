@@ -341,6 +341,7 @@ IM.Viewer.prototype = {
 
         // Create canvas
         this._canvas = document.createElement('canvas');
+        this._canvas.style.position = 'absolute';
 
         // Get WebGL context
         this._gl = this._canvas.getContext('webgl2', { antialias: true, alpha: false, depth: false, stencil: false });
@@ -729,16 +730,14 @@ IM.Viewer.prototype = {
     },
 
     _resize: function() {
-        var style = window.getComputedStyle(this._config.domContainer);
-        var width = Math.ceil(parseFloat(style.width));
-        var height = Math.ceil(parseFloat(style.height));
+        var rect = this._config.domContainer.getBoundingClientRect();
 
         var ratio = this._getDpiRatio();
-        var pixelWidth = Math.round(width * ratio);
-        var pixelHeight = Math.round(height * ratio);
+        var pixelWidth = Math.round(rect.width * ratio);
+        var pixelHeight = Math.round(rect.height * ratio);
 
-        this._canvas.style.width = width + 'px';
-        this._canvas.style.height = height + 'px';
+        this._canvas.style.width = rect.width + 'px';
+        this._canvas.style.height = rect.height + 'px';
         this._canvas.width = pixelWidth;
         this._canvas.height = pixelHeight;
         this._gl.viewport(0, 0, pixelWidth, pixelHeight);
