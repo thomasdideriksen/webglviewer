@@ -1,8 +1,10 @@
+#version 300 es
 precision mediump float;
-uniform sampler2D Texture;
-varying vec2 TexCoord;
-uniform float Alpha;
+uniform sampler2D tex;
+uniform float alpha;
+in vec2 uv;
+out vec4 color;
 
 void main(void) {
-    gl_FragColor = vec4(texture2D(Texture, TexCoord).rgb, Alpha);
+    color = vec4(texture(tex, uv).rgb, alpha);
 }
