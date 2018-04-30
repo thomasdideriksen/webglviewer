@@ -16,12 +16,14 @@ IM.Animator.prototype = {
 
     constructor: IM.Animator,
 
-    start: function(name, to, duration) {
+    start: function(name, to, duration, easing, easingParam0) {
         var animation = {
             from: this.get(name),
             to: to,
             duration: duration,
             t0: Date.now(),
+            easing: easing || 'EaseOutQuart',
+            easingParam0: easingParam0
         };
         this._animations[name] = animation;
     },
@@ -55,8 +57,17 @@ IM.Animator.prototype = {
         var dt = Date.now() - animation.t0;
         var t = Math.min(1.0, dt / animation.duration);
         if (t < 1.0) {
-            t = t - 1.0;
-            t = -(t * t * t * t - 1.0);
+            switch (animation.easing) {
+                case 'EaseOutQuart':
+                    t = t - 1.0;
+                    t = -(t * t * t * t - 1.0);
+                    break;
+                case 'EaseOutOvershoot':
+                    var s = animation.easingParam0 || 1.70158;
+                    t = t - 1.0;
+                    t = t * t * ((s + 1.0) * t + s) + 1.0;
+                    break;
+            }
             return animation.from + t * (animation.to - animation.from);
         } else {
             animation.finished = true;
@@ -493,6 +504,9 @@ IM.Viewer.prototype = {
             context._dragStartPos = [
                 context._animator.get('PosX'),
                 context._animator.get('PosY')];
+            context._animator.set('PosX', context._dragStartPos[0])
+            context._animator.set('PosY', context._dragStartPos[1])
+            context._invalidate();
             return terminateMouseEvent(e);
         }
 
@@ -501,7 +515,7 @@ IM.Viewer.prototype = {
             
             if (moves.length >= 2) {
                 
-                // Compute delay modifier (aka. time since last move)
+                // Compute delay modifier (aka. we scale the magnitude of the effect depending on time since last move-event)
                 var dt = Date.now() - lastMoveTime;
                 var timeThreshold = 150;
                 dt = Math.min(dt, timeThreshold) / timeThreshold;
@@ -530,7 +544,58 @@ IM.Viewer.prototype = {
                 var newPosY = context._animator.get('PosY') - dy;
                 context._animator.start('PosX', newPosX, duration);
                 context._animator.start('PosY', newPosY, duration);
-                context._invalidate();
+                
+                // Do boundary collision detection and 'bounce' back if necessary
+                var matrix = context._makeTransformMatrix({
+                    scale: context._animator.getDestination('Scale'),
+                    rotation: context._animator.getDestination('Rotation'),
+                    posX: context._animator.getDestination('PosX'),
+                    posY: context._animator.getDestination('PosY')});
+                
+                var rect = context._getImageRect(matrix);
+                var x0 = rect.bounds.x0
+                var x1 = rect.bounds.x1
+                var y0 = rect.bounds.y0
+                var y1 = rect.bounds.y1
+                
+                var width = context._canvas.width
+                var height = context._canvas.height
+                var overshootScale = 0.05
+                var fitX = rect.width < width
+                var fitY = rect.height < height
+                
+                var clampedNewPosX, overshootAmountX
+                var clampedNewPosY, overshootAmountY
+                
+                if ((fitX && x0 < 0) || (!fitX && x0 > 0)) {
+                    clampedNewPosX = newPosX - x0
+                    overshootAmountX = Math.abs(x0) * overshootScale
+                }
+                
+                if ((fitX && x1 > width) || (!fitX && x1 < width)) {
+                    clampedNewPosX = newPosX - (x1 - width)
+                    overshootAmountX = Math.abs(x1 - width) * overshootScale
+                }
+                
+                if ((fitY && y0 < 0) || (!fitY && y0 > 0)) {
+                    clampedNewPosY = newPosY - y0
+                    overshootAmountY = Math.abs(y0) * overshootScale
+                }
+                
+                if ((fitY && y1 > height) || (!fitY && y1 < height)) {
+                    clampedNewPosY = newPosY - (y1 - height)
+                    overshootAmountY = Math.abs(y1 - height) * overshootScale
+                }
+
+                if (clampedNewPosX !== undefined) {
+                    context._animator.start('PosX', clampedNewPosX, duration, 'EaseOutOvershoot', overshootAmountX)
+                    context._invalidate()
+                }
+                
+                if (clampedNewPosY !== undefined) {
+                    context._animator.start('PosY', clampedNewPosY, duration, 'EaseOutOvershoot', overshootAmountY)
+                    context._invalidate()
+                }
             }
             
             context._snapIntoView(500);
@@ -549,12 +614,15 @@ IM.Viewer.prototype = {
                 context._animator.set('PosX', context._dragStartPos[0] + dx);
                 context._animator.set('PosY', context._dragStartPos[1] + dy);
                 context._invalidate();
+
+                // Note: Store last N positions while moving (used for calculating the direction and magnitude of the "momentum" when the pointer events end)
                 lastMoveTime = Date.now();
                 moves.push(pt)
-                var maxMoves = 5;
+                var maxMoves = 4; // N = 4
                 if (moves.length > maxMoves) {
                     moves.splice(0, moves.length - maxMoves)
                 }
+
                 return terminateMouseEvent(e);
             }
         }
